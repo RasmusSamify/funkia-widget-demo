@@ -1,1205 +1,1359 @@
 /**
  * Funkia AB – Premium Chatbot Widget Demo
  * ========================================
- * Single-file React + Tailwind v4 demo.
- * All icons are inline SVG — NO lucide-react.
- * All text in Swedish.
+ * Modelled after the Kalmar FF widget pattern:
+ * bubble-hint, pulse launcher, multi-screen panel with slide transitions,
+ * hero section, tile grid, chat, contact cards.
  *
- * CSS Variables:
- *   --funkia-moss:    #2F4A3A
- *   --funkia-moss-dk: #1F3328
- *   --funkia-sage:    #A8BAA0
- *   --funkia-cream:   #F5F1E8
- *   --funkia-sand:    #E8DFC8
- *   --funkia-terra:   #B8734A
- *   --funkia-ink:     #1F2820
- *   --funkia-mist:    #FAF8F2
+ * Single-file React component. No lucide-react — all inline SVG.
+ * All text in Swedish. No localStorage.
+ *
+ * Palette (CSS vars):
+ *   --f-moss:    #2F4A3A   --f-moss-dk: #1F3328
+ *   --f-sage:    #A8BAA0   --f-cream:   #F5F1E8
+ *   --f-sand:    #E8DFC8   --f-terra:   #B8734A
+ *   --f-ink:     #1F2820   --f-mist:    #FAF8F2
  */
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
 /* ═══════════════════════════════════════════════════════════════
-   INLINE SVG ICON COMPONENTS
+   CSS — injected once via <style> tag
+   ═══════════════════════════════════════════════════════════════ */
+const WIDGET_CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=Inter:wght@400;500;600;700;800&display=swap');
+
+:root {
+  --f-moss: #2F4A3A; --f-moss-dk: #1F3328; --f-sage: #A8BAA0;
+  --f-cream: #F5F1E8; --f-sand: #E8DFC8; --f-terra: #B8734A;
+  --f-ink: #1F2820; --f-mist: #FAF8F2; --f-white: #FFFFFF;
+  --f-border: #E0D9CB; --f-green: #4A9D6A;
+  --f-font: 'Inter', -apple-system, system-ui, sans-serif;
+  --f-serif: 'Cormorant Garamond', Georgia, serif;
+  --f-r: 16px; --f-r-sm: 10px;
+}
+
+/* ── Widget root ── */
+.fw-root { position: fixed; bottom: 24px; right: 24px; z-index: 9999; font-family: var(--f-font); }
+
+/* ── Bubble hint ── */
+.fw-bubble {
+  position: absolute; bottom: 78px; right: 0;
+  background: white; border-radius: 14px 14px 4px 14px;
+  padding: 11px 32px 11px 14px;
+  box-shadow: 0 4px 24px rgba(0,0,0,.16);
+  width: 230px; cursor: pointer;
+  animation: fwBubblePop .4s .8s both;
+}
+.fw-bubble.hidden { opacity: 0; transform: scale(.9); pointer-events: none; transition: all .2s; }
+.fw-bubble::after {
+  content:''; position: absolute; bottom: -8px; right: 22px;
+  width: 0; height: 0;
+  border-left: 10px solid transparent; border-top: 9px solid white;
+}
+@keyframes fwBubblePop { 0%{transform:scale(0);opacity:0} 70%{transform:scale(1.06)} 100%{transform:scale(1);opacity:1} }
+.fw-bubble-text { font-size: 13px; font-weight: 500; color: var(--f-moss); line-height: 1.5; }
+.fw-bubble-close {
+  position: absolute; top: 8px; right: 10px;
+  background: none; border: none; color: #C0C0C8; font-size: 12px; cursor: pointer;
+}
+
+/* ── Launcher button ── */
+.fw-btn {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: linear-gradient(135deg, var(--f-moss) 0%, #3d6049 100%);
+  border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  position: relative;
+  box-shadow: 0 4px 24px rgba(47,74,58,.5);
+  transition: transform .2s;
+}
+.fw-btn:hover { transform: scale(1.07); }
+.fw-pulse {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: var(--f-moss); opacity: 0;
+  animation: fwPulse 2.8s ease-out infinite;
+}
+.fw-pulse:nth-child(2) { animation-delay: .9s; }
+@keyframes fwPulse { 0%{transform:scale(1);opacity:.45} 100%{transform:scale(2);opacity:0} }
+.fw-notif {
+  position: absolute; top: -2px; right: -2px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: var(--f-terra); color: white;
+  font-size: 11px; font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+  border: 2px solid white;
+}
+.fw-btn .ic-leaf, .fw-btn .ic-close { transition: transform .3s, opacity .3s; position: absolute; }
+.fw-btn.open .ic-leaf { transform: rotate(90deg); opacity: 0; }
+.fw-btn.open .ic-close { transform: rotate(0deg); opacity: 1; }
+.fw-btn:not(.open) .ic-leaf { transform: rotate(0deg); opacity: 1; }
+.fw-btn:not(.open) .ic-close { transform: rotate(-90deg); opacity: 0; }
+.fw-btn.open .fw-notif, .fw-btn.open .fw-pulse { display: none; }
+
+/* ── Panel ── */
+.fw-panel {
+  position: absolute; bottom: 78px; right: 0;
+  width: 420px; height: 680px;
+  background: var(--f-white); border-radius: 20px;
+  box-shadow: 0 8px 60px rgba(0,0,0,.20);
+  display: flex; flex-direction: column; overflow: hidden;
+  transform: scale(.9) translateY(10px); opacity: 0; pointer-events: none;
+  transition: transform .3s cubic-bezier(.34,1.56,.64,1), opacity .22s;
+  transform-origin: bottom right;
+}
+.fw-panel.visible { transform: scale(1) translateY(0); opacity: 1; pointer-events: all; }
+
+/* ── Header ── */
+.fw-hdr {
+  background: var(--f-moss); padding: 16px;
+  display: flex; align-items: center; flex-shrink: 0;
+  position: relative; border-bottom: 3px solid var(--f-sage);
+  overflow: hidden;
+}
+.fw-hdr-deco {
+  position: absolute; right: -10px; top: -20px; width: 120px; height: 120px;
+  border-radius: 50%; background: rgba(168,186,160,.08); pointer-events: none;
+}
+.fw-hdr-back {
+  background: none; border: none; color: rgba(255,255,255,.6);
+  cursor: pointer; font-size: 24px; padding: 0 8px 0 0;
+  font-family: var(--f-font); display: none; z-index: 1;
+  transition: color .15s;
+}
+.fw-hdr-back:hover { color: white; }
+.fw-hdr-back.show { display: block; }
+.fw-hdr-center {
+  flex: 1; display: flex; align-items: center; gap: 10px; z-index: 1;
+}
+.fw-avatar {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: var(--f-sand); display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.fw-hdr-info { display: flex; flex-direction: column; }
+.fw-hdr-name { color: white; font-size: 14px; font-weight: 700; letter-spacing: .02em; }
+.fw-hdr-status { color: rgba(255,255,255,.7); font-size: 11px; display: flex; align-items: center; gap: 5px; }
+.fw-online-dot { width: 7px; height: 7px; border-radius: 50%; background: #4ADE80; }
+.fw-hdr-actions { display: flex; gap: 4px; z-index: 1; }
+.fw-hdr-btn {
+  width: 32px; height: 32px; border-radius: 8px;
+  background: rgba(255,255,255,.1); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,.7); transition: all .15s;
+}
+.fw-hdr-btn:hover { background: rgba(255,255,255,.18); color: white; }
+
+/* ── Screens ── */
+.fw-screens { flex: 1; position: relative; overflow: hidden; }
+.fw-screen {
+  position: absolute; inset: 0; overflow-y: auto;
+  transform: translateX(40px); opacity: 0; pointer-events: none;
+  transition: transform .32s cubic-bezier(.4,0,.2,1), opacity .28s;
+  background: white;
+}
+.fw-screen.active { transform: translateX(0); opacity: 1; pointer-events: all; z-index: 2; }
+.fw-screen.prev { transform: translateX(-28px); opacity: 0; z-index: 1; }
+.fw-screen::-webkit-scrollbar { width: 4px; }
+.fw-screen::-webkit-scrollbar-thumb { background: var(--f-sand); border-radius: 2px; }
+
+/* ── Home hero ── */
+.fw-home-hero {
+  background: linear-gradient(135deg, var(--f-moss) 0%, #3d6049 50%, var(--f-sage) 100%);
+  padding: 18px 20px 20px; position: relative; overflow: hidden;
+}
+.fw-home-hero::before {
+  content:''; position: absolute; right: -40px; top: -40px;
+  width: 160px; height: 160px; border-radius: 50%;
+  background: rgba(168,186,160,.15);
+}
+.fw-hero-label {
+  color: var(--f-sand); font-size: 11px; font-weight: 700;
+  margin-bottom: 6px; letter-spacing: .1em; text-transform: uppercase;
+  position: relative;
+}
+.fw-hero-title {
+  color: white; font-size: 19px; font-weight: 700;
+  line-height: 1.3; margin-bottom: 12px; position: relative;
+  font-family: var(--f-serif);
+}
+.fw-hero-title b { color: var(--f-sand); }
+.fw-hero-chips { display: flex; gap: 7px; flex-wrap: wrap; position: relative; }
+.fw-chip {
+  background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.14);
+  color: white; padding: 7px 12px; border-radius: 8px;
+  font-size: 12px; font-weight: 500; font-family: var(--f-font);
+  cursor: pointer; white-space: nowrap; transition: background .15s;
+}
+.fw-chip:hover { background: rgba(255,255,255,.22); }
+
+/* ── Home body grid ── */
+.fw-home-body { display: grid; grid-template-columns: 1.15fr 1fr; gap: 14px; padding: 14px 20px 0; }
+.fw-home-col { display: flex; flex-direction: column; }
+
+/* ── Showcase card (replaces match card) ── */
+.fw-showcase {
+  background: white; border: 2px solid var(--f-moss);
+  border-radius: 14px; overflow: hidden;
+  box-shadow: 0 4px 20px rgba(47,74,58,.10);
+}
+.fw-showcase-head {
+  background: var(--f-moss); color: white; padding: 8px 14px;
+  font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.fw-showcase-body { padding: 14px; }
+.fw-showcase-title {
+  font-family: var(--f-serif); font-size: 15px; font-weight: 700;
+  color: var(--f-ink); margin-bottom: 6px; line-height: 1.3;
+}
+.fw-showcase-desc { font-size: 12px; color: #6B7A6E; line-height: 1.5; margin-bottom: 12px; }
+.fw-showcase-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 12px; }
+.fw-tag {
+  font-size: 10px; font-weight: 600; padding: 3px 8px; border-radius: 5px;
+  background: rgba(47,74,58,.08); color: var(--f-moss);
+}
+.fw-showcase-cta {
+  background: var(--f-moss); color: white; border: none; border-radius: 10px;
+  padding: 11px; width: 100%; font-size: 12px; font-weight: 700;
+  font-family: var(--f-font); cursor: pointer; text-transform: uppercase;
+  letter-spacing: .04em; transition: background .15s;
+}
+.fw-showcase-cta:hover { background: var(--f-moss-dk); }
+
+/* ── Tiles ── */
+.fw-sec-label {
+  padding: 0 0 8px; font-size: 11px; font-weight: 700;
+  letter-spacing: .07em; color: #8E8E93; text-transform: uppercase;
+}
+.fw-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.fw-tile {
+  background: var(--f-mist); border: 1px solid var(--f-border);
+  border-radius: var(--f-r-sm); padding: 12px; cursor: pointer;
+  transition: all .18s;
+}
+.fw-tile:hover { border-color: var(--f-moss); background: rgba(47,74,58,.04); transform: translateY(-1px); }
+.fw-tile-ic {
+  width: 36px; height: 36px; border-radius: 9px;
+  background: white; border: 1px solid var(--f-border);
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 8px;
+}
+.fw-tile-name { font-size: 13px; font-weight: 600; color: var(--f-ink); }
+.fw-tile-sub { font-size: 11px; color: #8E8E93; }
+
+.fw-home-cta {
+  margin: 14px 20px 16px;
+  background: var(--f-ink); color: white; border: none;
+  border-radius: var(--f-r-sm); padding: 13px 20px;
+  width: calc(100% - 40px); font-size: 13px; font-weight: 700;
+  font-family: var(--f-font); cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  text-transform: uppercase; letter-spacing: .04em; transition: background .15s;
+}
+.fw-home-cta:hover { background: #2a3530; }
+
+/* ── Screen heads ── */
+.fw-screen-head { padding: 20px 20px 12px; }
+.fw-screen-head h2 { font-size: 18px; font-weight: 700; color: var(--f-ink); margin-bottom: 4px; font-family: var(--f-serif); }
+.fw-screen-head p { font-size: 13px; color: #8E8E93; line-height: 1.5; }
+
+/* ── Info blocks ── */
+.fw-info-block {
+  background: var(--f-mist); border: 1px solid var(--f-border);
+  border-radius: var(--f-r-sm); padding: 13px 15px; margin: 0 20px 10px;
+}
+.fw-info-lbl {
+  font-size: 10px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: var(--f-moss); margin-bottom: 6px;
+}
+.fw-info-text { font-size: 13px; color: var(--f-ink); line-height: 1.55; }
+
+/* ── Service cards (for BRF/Kommun screens) ── */
+.fw-svc-card {
+  background: var(--f-mist); border: 1px solid var(--f-border);
+  border-radius: var(--f-r-sm); padding: 14px 16px; margin: 0 20px 9px;
+  cursor: pointer; transition: all .18s; display: flex; align-items: center; gap: 13px;
+}
+.fw-svc-card:hover { border-color: var(--f-moss); background: rgba(47,74,58,.04); }
+.fw-svc-ic {
+  width: 44px; height: 44px; border-radius: 11px;
+  background: white; border: 1px solid var(--f-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; flex-shrink: 0;
+}
+.fw-svc-name { font-size: 13px; font-weight: 600; color: var(--f-ink); }
+.fw-svc-desc { font-size: 12px; color: #8E8E93; margin-top: 2px; }
+
+/* ── Action buttons row ── */
+.fw-actions { padding: 6px 20px 16px; display: flex; gap: 8px; }
+.fw-action-btn {
+  flex: 1; padding: 12px; border-radius: var(--f-r-sm);
+  font-size: 13px; font-weight: 700; font-family: var(--f-font);
+  cursor: pointer; text-align: center; transition: all .15s;
+}
+.fw-action-primary { background: var(--f-moss); color: white; border: none; }
+.fw-action-primary:hover { background: var(--f-moss-dk); }
+.fw-action-secondary { background: white; color: var(--f-moss); border: 1.5px solid var(--f-border); }
+.fw-action-secondary:hover { border-color: var(--f-moss); }
+
+/* ── Request flow ── */
+.fw-progress { padding: 14px 20px 0; }
+.fw-progress-label { font-size: 11px; font-weight: 600; color: #8E8E93; margin-bottom: 8px; }
+.fw-progress-bar { height: 4px; background: var(--f-sand); border-radius: 3px; overflow: hidden; }
+.fw-progress-fill {
+  height: 100%; background: var(--f-moss); border-radius: 3px;
+  transition: width .5s cubic-bezier(.4,0,.2,1);
+}
+
+.fw-step { padding: 16px 20px; }
+.fw-step-q {
+  font-size: 14px; font-weight: 600; color: var(--f-ink);
+  margin-bottom: 14px; line-height: 1.4;
+}
+
+/* Radio cards */
+.fw-radio {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--f-mist); border: 1.5px solid var(--f-border);
+  border-radius: var(--f-r-sm); padding: 12px 14px; margin-bottom: 8px;
+  cursor: pointer; transition: all .15s; font-size: 13px; font-weight: 500; color: var(--f-ink);
+}
+.fw-radio:hover { border-color: var(--f-sage); }
+.fw-radio.selected { border-color: var(--f-moss); background: rgba(47,74,58,.06); }
+.fw-radio-dot {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid var(--f-border); flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  transition: border-color .15s;
+}
+.fw-radio.selected .fw-radio-dot { border-color: var(--f-moss); }
+.fw-radio.selected .fw-radio-dot::after {
+  content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--f-moss);
+}
+
+/* Multi-select chips */
+.fw-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.fw-chip-select {
+  padding: 9px 14px; border-radius: 20px;
+  border: 1.5px solid var(--f-border); background: var(--f-mist);
+  font-size: 12.5px; font-weight: 500; color: var(--f-ink);
+  cursor: pointer; transition: all .15s; font-family: var(--f-font);
+}
+.fw-chip-select:hover { border-color: var(--f-sage); }
+.fw-chip-select.selected { border-color: var(--f-moss); background: var(--f-moss); color: white; }
+
+/* Text inputs */
+.fw-input {
+  width: 100%; padding: 12px 14px; border-radius: var(--f-r-sm);
+  border: 1.5px solid var(--f-border); background: var(--f-mist);
+  font-size: 13.5px; font-family: var(--f-font); color: var(--f-ink);
+  outline: none; transition: border-color .15s;
+}
+.fw-input:focus { border-color: var(--f-moss); }
+.fw-input.error { border-color: #E53E3E; }
+.fw-textarea { resize: none; min-height: 100px; line-height: 1.5; }
+.fw-char-count { font-size: 11px; color: #8E8E93; text-align: right; margin-top: 4px; }
+.fw-error { font-size: 11px; color: #E53E3E; margin-top: 4px; }
+.fw-field { margin-bottom: 12px; }
+.fw-label { font-size: 12px; font-weight: 600; color: var(--f-ink); margin-bottom: 6px; display: block; }
+
+/* Next button */
+.fw-next-bar { padding: 12px 20px 16px; }
+.fw-next-btn {
+  width: 100%; padding: 13px; border-radius: var(--f-r-sm);
+  background: var(--f-moss); color: white; border: none;
+  font-size: 13px; font-weight: 700; font-family: var(--f-font);
+  cursor: pointer; text-transform: uppercase; letter-spacing: .04em;
+  transition: all .15s; display: flex; align-items: center; justify-content: center; gap: 6px;
+}
+.fw-next-btn:hover:not(:disabled) { background: var(--f-moss-dk); }
+.fw-next-btn:disabled { opacity: .4; cursor: not-allowed; }
+.fw-terra-btn { background: var(--f-terra); }
+.fw-terra-btn:hover:not(:disabled) { background: #9d6240; }
+
+/* Summary */
+.fw-summary-card {
+  background: var(--f-mist); border: 1px solid var(--f-border);
+  border-radius: var(--f-r-sm); padding: 12px 14px; margin-bottom: 10px;
+}
+.fw-summary-row { display: flex; justify-content: space-between; align-items: baseline; }
+.fw-summary-lbl { font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #8E8E93; }
+.fw-summary-edit {
+  font-size: 11px; color: var(--f-moss); font-weight: 600; cursor: pointer;
+  background: none; border: none; font-family: var(--f-font);
+}
+.fw-summary-edit:hover { text-decoration: underline; }
+.fw-summary-val { font-size: 13px; color: var(--f-ink); margin-top: 4px; line-height: 1.4; }
+
+/* ── Done screen ── */
+.fw-done { padding: 40px 20px; text-align: center; }
+.fw-check-circle {
+  width: 72px; height: 72px; margin: 0 auto 20px;
+}
+.fw-check-circle svg { width: 72px; height: 72px; }
+.fw-check-circle .circle { stroke: var(--f-moss); stroke-width: 2; fill: none; stroke-dasharray: 200; stroke-dashoffset: 200; animation: fwCircleDraw .6s .2s forwards; }
+.fw-check-circle .check { stroke: var(--f-moss); stroke-width: 3; fill: none; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 40; stroke-dashoffset: 40; animation: fwCheckDraw .4s .7s forwards; }
+@keyframes fwCircleDraw { to { stroke-dashoffset: 0; } }
+@keyframes fwCheckDraw { to { stroke-dashoffset: 0; } }
+.fw-done-title { font-family: var(--f-serif); font-size: 22px; font-weight: 700; color: var(--f-ink); margin-bottom: 6px; }
+.fw-done-sub { font-size: 13px; color: #8E8E93; margin-bottom: 6px; }
+.fw-done-ref { font-size: 12px; color: var(--f-moss); font-weight: 600; margin-bottom: 24px; }
+.fw-timeline { text-align: left; padding: 0 10px; margin-bottom: 24px; }
+.fw-timeline-title { font-size: 12px; font-weight: 700; color: var(--f-ink); margin-bottom: 12px; }
+.fw-tl-item { display: flex; gap: 12px; margin-bottom: 14px; position: relative; }
+.fw-tl-dot {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: rgba(47,74,58,.1); display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; font-size: 11px; font-weight: 700; color: var(--f-moss);
+}
+.fw-tl-text { font-size: 12.5px; color: var(--f-ink); line-height: 1.4; padding-top: 3px; }
+.fw-tl-item:not(:last-child)::before {
+  content: ''; position: absolute; left: 11.5px; top: 26px;
+  width: 1px; height: calc(100% - 10px); background: var(--f-border);
+}
+.fw-done-actions { display: flex; gap: 8px; justify-content: center; }
+.fw-done-btn {
+  padding: 10px 20px; border-radius: var(--f-r-sm);
+  font-size: 13px; font-weight: 600; font-family: var(--f-font); cursor: pointer;
+  transition: all .15s;
+}
+
+/* ── Contact cards ── */
+.fw-ct-card {
+  background: var(--f-mist); border: 1px solid var(--f-border);
+  border-radius: var(--f-r-sm); padding: 14px 16px; margin: 0 20px 9px;
+  display: flex; align-items: center; gap: 13px; cursor: pointer;
+  transition: all .18s;
+}
+.fw-ct-card:hover { border-color: var(--f-moss); background: rgba(47,74,58,.04); }
+.fw-ct-ic {
+  width: 44px; height: 44px; border-radius: 11px;
+  background: white; border: 1px solid var(--f-border);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; flex-shrink: 0;
+}
+.fw-ct-lbl { font-size: 13px; font-weight: 600; color: var(--f-ink); }
+.fw-ct-val { font-size: 12px; color: #8E8E93; margin-top: 2px; }
+
+/* ── Map placeholder ── */
+.fw-map {
+  margin: 10px 20px 16px; background: #E8E3D8; border-radius: var(--f-r-sm);
+  height: 120px; display: flex; align-items: center; justify-content: center;
+  gap: 8px; color: #8E8E93; font-size: 12px; font-weight: 500;
+}
+
+/* ── Chat ── */
+.fw-chat-screen { display: flex; flex-direction: column; background: var(--f-mist); }
+.fw-chat-msgs {
+  flex: 1; overflow-y: auto; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.fw-cb { display: flex; gap: 8px; align-items: flex-end; max-width: 85%; }
+.fw-cb.bot { align-self: flex-start; }
+.fw-cb.usr { align-self: flex-end; flex-direction: row-reverse; }
+.fw-cb-av {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: white; display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; border: 1.5px solid var(--f-moss); overflow: hidden;
+}
+.fw-cb-msg {
+  background: white; border: 1px solid var(--f-border);
+  border-radius: 14px 14px 14px 4px;
+  padding: 10px 13px; font-size: 13.5px; color: var(--f-ink); line-height: 1.55;
+}
+.fw-cb.usr .fw-cb-msg {
+  background: var(--f-moss); border-color: transparent;
+  color: white; border-radius: 14px 14px 4px 14px;
+}
+.fw-typing-dots { display: flex; gap: 4px; padding: 5px 2px; }
+.fw-typing-dots span {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #8E8E93; animation: fwTd 1.2s infinite;
+}
+.fw-typing-dots span:nth-child(2) { animation-delay: .2s; }
+.fw-typing-dots span:nth-child(3) { animation-delay: .4s; }
+@keyframes fwTd { 0%,100%{transform:translateY(0);opacity:.4} 50%{transform:translateY(-5px);opacity:1} }
+.fw-chat-bar {
+  padding: 12px 14px; background: white;
+  border-top: 1px solid var(--f-border);
+  display: flex; gap: 8px; flex-shrink: 0;
+}
+.fw-chat-input {
+  flex: 1; background: var(--f-mist); border: 1px solid var(--f-border);
+  border-radius: 10px; padding: 10px 12px; font-size: 13.5px;
+  font-family: var(--f-font); color: var(--f-ink);
+  resize: none; outline: none; min-height: 40px; max-height: 96px;
+}
+.fw-chat-input:focus { border-color: var(--f-moss); }
+.fw-chat-send {
+  width: 40px; height: 40px; border-radius: 10px;
+  background: var(--f-moss); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0; transition: background .15s;
+}
+.fw-chat-send:hover { background: var(--f-moss-dk); }
+
+/* ── Footer ── */
+.fw-foot {
+  padding: 9px 16px; border-top: 1px solid var(--f-border);
+  display: flex; justify-content: center; flex-shrink: 0; background: white;
+}
+.fw-foot-link {
+  text-decoration: none; color: var(--f-ink); font-size: 11.5px;
+  font-weight: 600; display: flex; align-items: center; gap: 5px; opacity: .55;
+  cursor: pointer; background: none; border: none; font-family: var(--f-font);
+}
+.fw-foot-link:hover { opacity: 1; }
+.fw-foot-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--f-moss); }
+
+/* ── Mobile: fullscreen panel ── */
+@media (max-width: 639px) {
+  .fw-panel { position: fixed; inset: 0; width: 100%; height: 100%; border-radius: 0; bottom: 0; right: 0; }
+  .fw-panel.visible { transform: none; }
+}
+`;
+
+/* ═══════════════════════════════════════════════════════════════
+   INLINE SVG ICONS
    ═══════════════════════════════════════════════════════════════ */
 
-const LeafIcon = ({ size = 28, color = "#F5F1E8", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M12 2C6.5 2 2 6.5 2 12c0 3 1.5 5.5 3.5 7.5C7 21 9 22 12 22c5.5 0 10-4.5 10-10" />
-    <path d="M12 2c2 4 3 8 3 12" />
-    <path d="M2 12c4-1 8-1 12 0" />
-    <path d="M22 2L12 12" />
+const SvgLeaf = ({ size = 24, color = "#F5F1E8" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 8C8 10 5.9 16.17 3.82 21.34L5.71 22l1.03-2.07c2.16-.99 4.28-2.21 5.68-3.93 1.4-1.72 2.44-4 2.58-7" />
+    <path d="M17 8c.66-3.34-1-5-4-5S6 5 6 8c0 4 2 7 5 9" />
+    <path d="M6 8c-1.5 0-3 1-3 3.5S5 15 6 15" />
   </svg>
 );
 
-const CloseIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <line x1="18" y1="6" x2="6" y2="18" />
-    <line x1="6" y1="6" x2="18" y2="18" />
+const SvgLeafSmall = ({ size = 16, color = "var(--f-moss)" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17 8C8 10 5.9 16.17 3.82 21.34L5.71 22l1.03-2.07c2.16-.99 4.28-2.21 5.68-3.93 1.4-1.72 2.44-4 2.58-7" />
+    <path d="M17 8c.66-3.34-1-5-4-5S6 5 6 8c0 4 2 7 5 9" />
   </svg>
 );
 
-const ChevronLeftIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+const SvgClose = ({ size = 22, color = "white" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round">
+    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+const SvgChevronLeft = ({ size = 20, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="15 18 9 12 15 6" />
   </svg>
 );
 
-const PhoneIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07 19.5 19.5 0 01-6-6 19.79 19.79 0 01-3.07-8.67A2 2 0 014.11 2h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L8.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z" />
+const SvgPhone = ({ size = 15, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
+    <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 5.18 12 19.79 19.79 0 0 1 2.11 3.18 2 2 0 0 1 4.07 1h3a2 2 0 0 1 2 1.72c.13.81.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 8.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45c.91.34 2 .57 2.81.7A2 2 0 0 1 22 16.92z" />
   </svg>
 );
 
-const ArrowRightIcon = ({ size = 20, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <line x1="5" y1="12" x2="19" y2="12" />
-    <polyline points="12 5 19 12 12 19" />
+const SvgArrowRight = ({ size = 14, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" />
   </svg>
 );
 
-const CheckIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+const SvgCheck = ({ size = 16, color = "currentColor" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="20 6 9 17 4 12" />
   </svg>
 );
 
-const HouseIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" />
-    <path d="M9 21V12h6v9" />
+const SvgSend = ({ size = 15, color = "white" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round">
+    <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
   </svg>
 );
 
-const BuildingIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <rect x="4" y="2" width="16" height="20" rx="1" />
-    <path d="M9 22V18h6v4" />
-    <line x1="8" y1="6" x2="8" y2="6.01" />
-    <line x1="12" y1="6" x2="12" y2="6.01" />
-    <line x1="16" y1="6" x2="16" y2="6.01" />
-    <line x1="8" y1="10" x2="8" y2="10.01" />
-    <line x1="12" y1="10" x2="12" y2="10.01" />
-    <line x1="16" y1="10" x2="16" y2="10.01" />
-    <line x1="8" y1="14" x2="8" y2="14.01" />
-    <line x1="12" y1="14" x2="12" y2="14.01" />
-    <line x1="16" y1="14" x2="16" y2="14.01" />
-  </svg>
-);
-
-const PencilIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M17 3a2.828 2.828 0 114 4L7.5 20.5 2 22l1.5-5.5L17 3z" />
-  </svg>
-);
-
-const PinIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
-    <circle cx="12" cy="10" r="3" />
-  </svg>
-);
-
-const MailIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <rect x="2" y="4" width="20" height="16" rx="2" />
-    <path d="M22 7l-10 7L2 7" />
-  </svg>
-);
-
-const ClockIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <circle cx="12" cy="12" r="10" />
-    <polyline points="12 6 12 12 16 14" />
-  </svg>
-);
-
-const MenuIcon = ({ size = 24, color = "currentColor", className = "" }) => (
-  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color}
-    strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-    <line x1="3" y1="6" x2="21" y2="6" />
-    <line x1="3" y1="12" x2="21" y2="12" />
-    <line x1="3" y1="18" x2="21" y2="18" />
+const SvgPin = ({ size = 16, color = "#8E8E93" }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
+    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" /><circle cx="12" cy="10" r="3" />
   </svg>
 );
 
 /* ═══════════════════════════════════════════════════════════════
-   TYPING INDICATOR (three pulsing dots)
+   DATA & CONSTANTS
    ═══════════════════════════════════════════════════════════════ */
-const TypingIndicator = () => (
-  <div className="flex items-end gap-2 mb-4">
-    <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center"
-      style={{ backgroundColor: "var(--funkia-sage)" }}>
-      <LeafIcon size={16} color="var(--funkia-moss)" />
-    </div>
-    <div className="px-4 py-3 rounded-2xl rounded-tl-sm" style={{ backgroundColor: "#EDE9DF" }}>
-      <div className="flex gap-1">
-        {[0, 1, 2].map(i => (
-          <span key={i} className="funkia-typing-dot" style={{ animationDelay: `${i * 200}ms` }} />
-        ))}
-      </div>
-    </div>
-  </div>
-);
+
+const BESTÄLLARTYPER = ["BRF", "Privat", "Kommun", "Byggbolag", "Annat"];
+
+const UPPDRAGSTYPER = [
+  "Landskapsarkitektur", "Dagvatten", "Förvaltning",
+  "Nyanläggning", "Besiktning", "Rådgivning",
+];
+
+const PROJEKTSKEDEN = ["Idé", "Tidigt skede", "Pågående projekt", "Befintlig anläggning"];
+
+/* Chat demo responses — keyword matching like KFF widget */
+const CHAT_REPLIES = {
+  brf: "Absolut! Vi har lång erfarenhet av att arbeta med bostadsrättsföreningar. Från förvaltningsavtal till totalomgestaltning av gårdar. Tryck på \"BRF\" i menyn så visar jag våra vanligaste uppdrag. 🌿",
+  dagvatten: "Dagvatten är en av våra specialiteter. Vi designar regnbäddar, svackdiken och blågrön infrastruktur som hanterar vatten smart och vackert. Vill du starta en förfrågan?",
+  park: "Vi gestaltar parker, lekplatser och torg i hela Sverige. Från intima fickparker till storskaliga stadsparker. Kontakta oss så berättar vi mer!",
+  pris: "Priset beror på projektets omfattning. Starta en projektförfrågan så återkommer vi med en uppskattning inom 24 timmar. 📋",
+  kontor: "Vi har kontor i Stockholm (Ringvägen 100) och Linköping (Storgatan 20). Ring oss på 08-669 39 06 eller mejla info@funkia.se.",
+  förvaltning: "Vi erbjuder årliga förvaltningsavtal med skötselplaner, besiktning och löpande rådgivning. Perfekt för BRF:er och fastighetsägare som vill ge sin utemiljö långsiktig omsorg.",
+  default: "Bra fråga! Jag hjälper dig med information om våra tjänster inom landskapsarkitektur, dagvatten och förvaltning. Du kan också starta en projektförfrågan direkt i widgeten. 🌱",
+};
+
+const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
 
 /* ═══════════════════════════════════════════════════════════════
-   SAM CHAT BUBBLE (left-aligned)
+   WIDGET COMPONENT
    ═══════════════════════════════════════════════════════════════ */
-const SamBubble = ({ text, visible = true, delay = 0 }) => (
-  <div className="flex items-end gap-2 mb-4 funkia-msg-in"
-    style={{ opacity: visible ? 1 : 0, transitionDelay: `${delay}ms`, transition: "opacity 300ms ease-out, transform 300ms ease-out" }}>
-    <div className="w-8 h-8 rounded-full flex-shrink-0 flex items-center justify-center"
-      style={{ backgroundColor: "var(--funkia-sage)" }}>
-      <LeafIcon size={16} color="var(--funkia-moss)" />
-    </div>
-    <div className="max-w-[85%]">
-      <div className="px-4 py-3 rounded-2xl rounded-tl-sm text-sm leading-relaxed"
-        style={{ backgroundColor: "#EDE9DF", color: "var(--funkia-ink)" }}>
-        {text}
-      </div>
-      <p className="text-xs mt-1 ml-1" style={{ color: "var(--funkia-sage)" }}>Just nu</p>
-    </div>
-  </div>
-);
 
-/* ═══════════════════════════════════════════════════════════════
-   USER BUBBLE (right-aligned)
-   ═══════════════════════════════════════════════════════════════ */
-const UserBubble = ({ text }) => (
-  <div className="flex justify-end mb-4 funkia-msg-in">
-    <div className="px-4 py-3 rounded-2xl rounded-tr-sm text-sm text-white max-w-[85%]"
-      style={{ backgroundColor: "var(--funkia-moss)" }}>
-      {text}
-    </div>
-  </div>
-);
-
-/* ═══════════════════════════════════════════════════════════════
-   MAIN COMPONENT
-   ═══════════════════════════════════════════════════════════════ */
-export default function FunkiaWidgetDemo() {
-  // Widget state
+function FunkiaWidget() {
   const [isOpen, setIsOpen] = useState(false);
-  const [buttonVisible, setButtonVisible] = useState(false);
-  const [hasOpenedOnce, setHasOpenedOnce] = useState(false);
+  const [bubbleVisible, setBubbleVisible] = useState(true);
+  const [hasOpened, setHasOpened] = useState(false);
   const [screen, setScreen] = useState("home");
+  const [prevScreen, setPrevScreen] = useState(null);
   const [screenHistory, setScreenHistory] = useState([]);
-  const [requestStep, setRequestStep] = useState(1);
-  const [showTyping, setShowTyping] = useState(true);
-  const [samVisible, setSamVisible] = useState(false);
-  const [cardsVisible, setCardsVisible] = useState(false);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Form state
-  const [formData, setFormData] = useState({
-    beställartyp: "",
-    uppdrag: [],
-    skede: "",
-    plats: "",
-    beskrivning: "",
-    namn: "",
-    företag: "",
-    epost: "",
-    telefon: "",
+  /* Request flow */
+  const [reqStep, setReqStep] = useState(1);
+  const [form, setForm] = useState({
+    beställartyp: "", uppdrag: [], skede: "", plats: "",
+    beskrivning: "", namn: "", företag: "", epost: "", telefon: "",
   });
   const [errors, setErrors] = useState({});
 
-  const scrollRef = useRef(null);
-  const referenceId = "FK-2026-0414-A7";
+  /* Chat */
+  const [chatMsgs, setChatMsgs] = useState([
+    { from: "bot", text: "Hej och välkommen! 🌿 Jag är Sam, Funkias assistent. Fråga mig om våra tjänster, kontor eller projekt. Vad vill du veta?" },
+  ]);
+  const [chatInput, setChatInput] = useState("");
+  const [chatBusy, setChatBusy] = useState(false);
+  const chatRef = useRef(null);
+  const textareaRef = useRef(null);
 
-  // Inject styles on mount (fonts + keyframes + CSS vars)
+  /* ── Inject CSS once ── */
   useEffect(() => {
-    const styleId = "funkia-widget-styles";
-    if (document.getElementById(styleId)) return;
-    const style = document.createElement("style");
-    style.id = styleId;
-    style.textContent = `
-      @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,600;0,700;1,400&family=Inter:wght@300;400;500;600&display=swap');
-
-      :root {
-        --funkia-moss: #2F4A3A;
-        --funkia-moss-dk: #1F3328;
-        --funkia-sage: #A8BAA0;
-        --funkia-cream: #F5F1E8;
-        --funkia-sand: #E8DFC8;
-        --funkia-terra: #B8734A;
-        --funkia-ink: #1F2820;
-        --funkia-mist: #FAF8F2;
-      }
-
-      .font-serif-funkia { font-family: 'Cormorant Garamond', 'Georgia', serif; }
-      .font-body-funkia { font-family: 'Inter', system-ui, sans-serif; }
-
-      /* Widget panel entry */
-      @keyframes funkia-panel-in {
-        0% { opacity: 0; transform: scale(0.92) translateY(16px); }
-        100% { opacity: 1; transform: scale(1) translateY(0); }
-      }
-      .funkia-panel-enter { animation: funkia-panel-in 400ms ease-out forwards; }
-
-      /* Message slide-in */
-      @keyframes funkia-msg-slide {
-        0% { opacity: 0; transform: translateY(10px); }
-        100% { opacity: 1; transform: translateY(0); }
-      }
-      .funkia-msg-in { animation: funkia-msg-slide 300ms ease-out forwards; }
-
-      /* Card stagger fade */
-      @keyframes funkia-card-in {
-        0% { opacity: 0; transform: translateY(8px); }
-        100% { opacity: 1; transform: translateY(0); }
-      }
-
-      /* Typing indicator dots */
-      .funkia-typing-dot {
-        display: inline-block;
-        width: 7px; height: 7px;
-        border-radius: 50%;
-        background: var(--funkia-sage);
-        animation: funkia-dot-pulse 1.2s ease-in-out infinite;
-      }
-      @keyframes funkia-dot-pulse {
-        0%, 60%, 100% { opacity: 0.3; transform: scale(0.8); }
-        30% { opacity: 1; transform: scale(1); }
-      }
-
-      /* Ping rings for floating button */
-      @keyframes funkia-ping {
-        0% { transform: scale(1); opacity: 0.6; }
-        100% { transform: scale(1.6); opacity: 0; }
-      }
-
-      /* Checkmark animation */
-      @keyframes funkia-check-circle {
-        0% { stroke-dashoffset: 166; }
-        100% { stroke-dashoffset: 0; }
-      }
-      @keyframes funkia-check-mark {
-        0% { stroke-dashoffset: 48; }
-        100% { stroke-dashoffset: 0; }
-      }
-      .funkia-check-circle {
-        stroke-dasharray: 166;
-        stroke-dashoffset: 166;
-        animation: funkia-check-circle 600ms ease-out 200ms forwards;
-      }
-      .funkia-check-mark {
-        stroke-dasharray: 48;
-        stroke-dashoffset: 48;
-        animation: funkia-check-mark 400ms ease-out 600ms forwards;
-      }
-
-      /* Step fade transition */
-      @keyframes funkia-step-fade {
-        0% { opacity: 0; }
-        100% { opacity: 1; }
-      }
-      .funkia-step-enter { animation: funkia-step-fade 200ms ease-out forwards; }
-
-      /* Tooltip bounce */
-      @keyframes funkia-hint-bounce {
-        0%, 100% { transform: translateY(0); }
-        50% { transform: translateY(-4px); }
-      }
-
-      /* Scrollbar styling */
-      .funkia-scroll::-webkit-scrollbar { width: 4px; }
-      .funkia-scroll::-webkit-scrollbar-track { background: transparent; }
-      .funkia-scroll::-webkit-scrollbar-thumb { background: var(--funkia-sand); border-radius: 4px; }
-    `;
-    document.head.appendChild(style);
-    return () => { const el = document.getElementById(styleId); if (el) el.remove(); };
-  }, []);
-
-  // Fade in floating button after 800ms
-  useEffect(() => {
-    const t = setTimeout(() => setButtonVisible(true), 800);
-    return () => clearTimeout(t);
-  }, []);
-
-  // Show typing then Sam message on screen changes
-  useEffect(() => {
-    setShowTyping(true);
-    setSamVisible(false);
-    setCardsVisible(false);
-    const t1 = setTimeout(() => { setShowTyping(false); setSamVisible(true); }, 600);
-    const t2 = setTimeout(() => setCardsVisible(true), 900);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, [screen, requestStep]);
-
-  // Scroll to bottom on content changes
-  useEffect(() => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    const id = "fw-styles";
+    if (!document.getElementById(id)) {
+      const s = document.createElement("style");
+      s.id = id;
+      s.textContent = WIDGET_CSS;
+      document.head.appendChild(s);
     }
-  }, [screen, requestStep, showTyping, samVisible, cardsVisible]);
+  }, []);
 
-  // Navigation helpers
-  const navigateTo = useCallback((newScreen) => {
-    setScreenHistory(prev => [...prev, screen]);
-    setScreen(newScreen);
-    if (newScreen === "request") setRequestStep(1);
+  /* ── Auto-scroll chat ── */
+  useEffect(() => {
+    if (chatRef.current) chatRef.current.scrollTop = chatRef.current.scrollHeight;
+  }, [chatMsgs]);
+
+  /* ── Screen navigation (KFF-style) ── */
+  const showScreen = useCallback((id) => {
+    if (id === screen) return;
+    setPrevScreen(screen);
+    setScreenHistory((h) => [...h, screen]);
+    setScreen(id);
+    // Clear prev after transition
+    setTimeout(() => setPrevScreen(null), 350);
   }, [screen]);
 
   const goBack = useCallback(() => {
-    if (screen === "request" && requestStep > 1) {
-      setRequestStep(prev => prev - 1);
+    if (screen === "request" && reqStep > 1) {
+      setReqStep((s) => s - 1);
+      setErrors({});
       return;
     }
-    if (screenHistory.length > 0) {
-      const prev = screenHistory[screenHistory.length - 1];
-      setScreenHistory(h => h.slice(0, -1));
+    const prev = screenHistory[screenHistory.length - 1];
+    if (prev) {
+      setPrevScreen(screen);
+      setScreenHistory((h) => h.slice(0, -1));
       setScreen(prev);
-    } else {
-      setScreen("home");
+      setTimeout(() => setPrevScreen(null), 350);
     }
-  }, [screen, requestStep, screenHistory]);
+  }, [screen, screenHistory, reqStep]);
 
-  const openWidget = () => {
-    setIsOpen(true);
-    if (!hasOpenedOnce) setHasOpenedOnce(true);
-  };
-
-  const closeWidget = () => {
-    setIsOpen(false);
-  };
-
-  const resetWidget = () => {
+  const goHome = useCallback(() => {
+    setPrevScreen(screen);
     setScreen("home");
     setScreenHistory([]);
-    setRequestStep(1);
-    setFormData({ beställartyp: "", uppdrag: [], skede: "", plats: "", beskrivning: "", namn: "", företag: "", epost: "", telefon: "" });
+    setReqStep(1);
+    setTimeout(() => setPrevScreen(null), 350);
+  }, [screen]);
+
+  const resetAll = useCallback(() => {
+    setScreen("home");
+    setScreenHistory([]);
+    setReqStep(1);
+    setForm({ beställartyp: "", uppdrag: [], skede: "", plats: "", beskrivning: "", namn: "", företag: "", epost: "", telefon: "" });
     setErrors({});
+  }, []);
+
+  /* ── Toggle widget ── */
+  const toggle = () => {
+    setIsOpen(!isOpen);
+    setBubbleVisible(false);
+    if (!hasOpened) setHasOpened(true);
   };
 
-  // Form helpers
-  const updateForm = (key, value) => {
-    setFormData(prev => ({ ...prev, [key]: value }));
-    if (errors[key]) setErrors(prev => { const n = { ...prev }; delete n[key]; return n; });
-  };
-
-  const toggleUppdrag = (val) => {
-    setFormData(prev => ({
-      ...prev,
-      uppdrag: prev.uppdrag.includes(val)
-        ? prev.uppdrag.filter(v => v !== val)
-        : [...prev.uppdrag, val],
-    }));
-  };
-
-  // Validate step 6 (contact)
-  const validateContact = () => {
+  /* ── Request flow validation ── */
+  const validateStep = () => {
     const e = {};
-    if (!formData.namn.trim()) e.namn = "Namn krävs";
-    if (!formData.epost.trim()) e.epost = "E-post krävs";
-    else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.epost)) e.epost = "Ogiltig e-postadress";
-    if (!formData.telefon.trim()) e.telefon = "Telefon krävs";
+    switch (reqStep) {
+      case 1: if (!form.beställartyp) e.beställartyp = "Välj typ"; break;
+      case 2: if (!form.uppdrag.length) e.uppdrag = "Välj minst ett"; break;
+      case 3: if (!form.skede) e.skede = "Välj skede"; break;
+      case 4: if (!form.plats.trim()) e.plats = "Ange ort"; break;
+      case 5: if (!form.beskrivning.trim()) e.beskrivning = "Skriv en kort beskrivning"; break;
+      case 6:
+        if (!form.namn.trim()) e.namn = "Ange namn";
+        if (!form.epost.trim()) e.epost = "Ange e-post";
+        else if (!isValidEmail(form.epost)) e.epost = "Ogiltig e-postadress";
+        if (!form.telefon.trim()) e.telefon = "Ange telefonnummer";
+        break;
+    }
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  // Check if next button should be enabled
-  const isStepValid = () => {
-    switch (requestStep) {
-      case 1: return !!formData.beställartyp;
-      case 2: return formData.uppdrag.length > 0;
-      case 3: return !!formData.skede;
-      case 4: return formData.plats.trim().length > 0;
-      case 5: return formData.beskrivning.trim().length > 0;
-      case 6: return formData.namn.trim() && formData.epost.trim() && formData.telefon.trim();
-      default: return true;
-    }
+  const nextStep = () => {
+    if (!validateStep()) return;
+    if (reqStep < 7) { setReqStep(reqStep + 1); setErrors({}); }
   };
 
-  const handleNext = () => {
-    if (requestStep === 6) {
-      if (!validateContact()) return;
-    }
-    if (requestStep < 7) setRequestStep(prev => prev + 1);
-  };
-
-  const handleSubmit = () => {
+  const submitRequest = () => {
+    const refId = "FK-2026-0414-A" + Math.floor(Math.random() * 90 + 10);
+    /* ════════════════════════════════════════════════════════════
+       TODO: POST till Autoflow-webhook
+       fetch("https://autoflow.samify.se/webhook/funkia", {
+         method: "POST",
+         headers: { "Content-Type": "application/json" },
+         body: JSON.stringify(payload),
+       });
+       ════════════════════════════════════════════════════════════ */
     const payload = {
       source: "funkia-widget-demo",
-      reference_id: referenceId,
+      reference_id: refId,
       timestamp: new Date().toISOString(),
-      segment: formData.beställartyp,
-      contact: { name: formData.namn, company: formData.företag, email: formData.epost, phone: formData.telefon },
-      project: { uppdragstyper: formData.uppdrag, skede: formData.skede, ort: formData.plats, beskrivning: formData.beskrivning },
+      segment: form.beställartyp,
+      contact: { name: form.namn, company: form.företag, email: form.epost, phone: form.telefon },
+      project: { uppdragstyper: form.uppdrag, skede: form.skede, ort: form.plats, beskrivning: form.beskrivning },
     };
     console.log("═══ FUNKIA PROJEKTFÖRFRÅGAN ═══");
     console.log(JSON.stringify(payload, null, 2));
-    // TODO: POST till Autoflow-webhook
-    // fetch("https://autoflow.samify.se/webhook/funkia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-    setScreen("done");
-    setScreenHistory([]);
+    console.log("════════════════════════════════");
+    showScreen("done");
   };
 
-  // Show back button on all screens except home and done
+  /* ── Chat (demo mode with keyword matching — like KFF) ── */
+  const sendChat = () => {
+    if (chatBusy || !chatInput.trim()) return;
+    const txt = chatInput.trim();
+    setChatInput("");
+    setChatBusy(true);
+    setChatMsgs((m) => [...m, { from: "usr", text: txt }]);
+    // Typing indicator
+    setChatMsgs((m) => [...m, { from: "typing", text: "" }]);
+    setTimeout(() => {
+      const lower = txt.toLowerCase();
+      let reply = CHAT_REPLIES.default;
+      for (const key in CHAT_REPLIES) {
+        if (key !== "default" && lower.includes(key)) { reply = CHAT_REPLIES[key]; break; }
+      }
+      setChatMsgs((m) => [...m.filter((x) => x.from !== "typing"), { from: "bot", text: reply }]);
+      setChatBusy(false);
+    }, 900);
+  };
+
+  const chatKey = (e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendChat(); } };
+
+  /* ── Helper: screen class ── */
+  const sc = (id) => {
+    if (screen === id) return "fw-screen active";
+    if (prevScreen === id) return "fw-screen prev";
+    return "fw-screen";
+  };
+
+  const TITLES = {
+    home: "Funkia", brf: "Privat & BRF", kommun: "Kommun & Bygg",
+    request: `Projektförfrågan`, chat: "Sam — Assistent",
+    contact: "Kontakt", done: "Bekräftelse",
+  };
   const showBack = screen !== "home" && screen !== "done";
 
-  /* ───────────────────────────────────────────
-     SCREEN RENDERERS
-     ─────────────────────────────────────────── */
-
-  const renderHome = () => (
-    <div className="px-4 py-3">
-      {showTyping && <TypingIndicator />}
-      {samVisible && (
-        <SamBubble text="Hej! 🌿 Jag är Sam, din guide hos Funkia. Vad kan jag hjälpa dig med idag?" />
-      )}
-      {cardsVisible && (
-        <div className="flex flex-col gap-3 mt-2">
-          {[
-            { icon: <HouseIcon size={28} color="var(--funkia-moss)" />, title: "BRF eller privat beställare", sub: "Förvaltning, gestaltning & upprustning", target: "brf" },
-            { icon: <BuildingIcon size={28} color="var(--funkia-moss)" />, title: "Kommun eller byggbolag", sub: "Projektering, dagvatten & ramavtal", target: "kommun" },
-            { icon: <PencilIcon size={28} color="var(--funkia-moss)" />, title: "Starta en projektförfrågan", sub: "Få offert inom 24h", target: "request" },
-          ].map((card, i) => (
-            <button key={card.target}
-              onClick={() => navigateTo(card.target)}
-              className="group flex items-center gap-3 p-4 rounded-xl border text-left transition-all duration-200 hover:shadow-sm"
-              style={{
-                backgroundColor: "var(--funkia-cream)",
-                borderColor: "var(--funkia-sand)",
-                animation: `funkia-card-in 300ms ease-out ${i * 100}ms forwards`,
-                opacity: 0,
-              }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = "#E8EDDF"}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = "var(--funkia-cream)"}
-            >
-              <div className="flex-shrink-0 w-11 h-11 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: "var(--funkia-sand)" }}>
-                {card.icon}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm" style={{ color: "var(--funkia-ink)" }}>{card.title}</p>
-                <p className="text-xs mt-0.5" style={{ color: "var(--funkia-sage)" }}>{card.sub}</p>
-              </div>
-              <ArrowRightIcon size={18} color="var(--funkia-sage)" className="flex-shrink-0 transition-transform duration-200 group-hover:translate-x-1" />
-            </button>
+  /* ═══════ RENDER: Request step ═══════ */
+  const renderRequestStep = () => {
+    switch (reqStep) {
+      case 1: return (
+        <div className="fw-step">
+          <div className="fw-step-q">Vilken typ av beställare är du?</div>
+          {BESTÄLLARTYPER.map((t) => (
+            <div key={t} className={`fw-radio${form.beställartyp === t ? " selected" : ""}`}
+              onClick={() => { setForm({ ...form, beställartyp: t }); setErrors({}); }}>
+              <div className="fw-radio-dot" />{t}
+            </div>
           ))}
+          {errors.beställartyp && <div className="fw-error">{errors.beställartyp}</div>}
         </div>
-      )}
-    </div>
-  );
-
-  const renderServiceScreen = (samText, services) => (
-    <div className="px-4 py-3">
-      {showTyping && <TypingIndicator />}
-      {samVisible && <SamBubble text={samText} />}
-      {cardsVisible && (
-        <>
-          <div className="flex flex-col gap-3 mt-2 mb-4">
-            {services.map((s, i) => (
-              <div key={i} className="p-4 rounded-xl border"
-                style={{
-                  backgroundColor: "var(--funkia-cream)",
-                  borderColor: "var(--funkia-sand)",
-                  animation: `funkia-card-in 300ms ease-out ${i * 100}ms forwards`,
-                  opacity: 0,
-                }}>
-                <p className="font-medium text-sm" style={{ color: "var(--funkia-ink)" }}>{s.title}</p>
-                <p className="text-xs mt-1 leading-relaxed" style={{ color: "#6B7B6A" }}>{s.desc}</p>
-              </div>
+      );
+      case 2: return (
+        <div className="fw-step">
+          <div className="fw-step-q">Vilka uppdrag är du intresserad av?</div>
+          <div className="fw-chips">
+            {UPPDRAGSTYPER.map((t) => (
+              <button key={t}
+                className={`fw-chip-select${form.uppdrag.includes(t) ? " selected" : ""}`}
+                onClick={() => {
+                  setForm({ ...form, uppdrag: form.uppdrag.includes(t) ? form.uppdrag.filter((x) => x !== t) : [...form.uppdrag, t] });
+                  setErrors({});
+                }}>{t}</button>
             ))}
           </div>
-          <div className="flex gap-2 mt-2" style={{ animation: "funkia-card-in 300ms ease-out 400ms forwards", opacity: 0 }}>
-            <button onClick={() => navigateTo("request")}
-              className="flex-1 py-3 rounded-xl text-sm font-medium text-white transition-all duration-200 hover:opacity-90"
-              style={{ backgroundColor: "var(--funkia-moss)" }}>
-              Starta projektförfrågan
-            </button>
-            <button onClick={() => navigateTo("contact")}
-              className="flex-1 py-3 rounded-xl text-sm font-medium border transition-all duration-200 hover:opacity-80"
-              style={{ borderColor: "var(--funkia-sand)", color: "var(--funkia-moss)" }}>
-              Kontakta oss
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-
-  const renderBrf = () => renderServiceScreen(
-    "Perfekt! Funkia har lång erfarenhet av att arbeta med bostadsrättsföreningar och privata beställare. Här är några av våra vanligaste uppdrag:",
-    [
-      { title: "Årligt förvaltningsavtal", desc: "Skötselplaner och löpande rådgivning för er utemiljö" },
-      { title: "Upprustning av gårdsmiljö", desc: "Ny gestaltning som höjer trivseln och fastighetsvärdet" },
-      { title: "Dagvattenlösning", desc: "Hållbar dagvattenhantering anpassad för er fastighet" },
-    ]
-  );
-
-  const renderKommun = () => renderServiceScreen(
-    "Välkommen! Vi samarbetar med kommuner och byggbolag i hela Sverige. Här är exempel på uppdrag vi tar oss an:",
-    [
-      { title: "Ramavtal landskapsarkitektur", desc: "Löpande stöd i plan- och gestaltningsfrågor" },
-      { title: "Dagvattenutredning", desc: "Systemlösningar och blågrön infrastruktur" },
-      { title: "Offentliga parkmiljöer", desc: "Gestaltning av parker, torg och lekplatser" },
-    ]
-  );
-
-  const renderRequest = () => {
-    const progress = requestStep / 7;
-
-    const stepPrompts = {
-      1: "Först — vilken typ av beställare är du?",
-      2: "Vilka typer av uppdrag är du intresserad av?",
-      3: "Var befinner sig projektet just nu?",
-      4: "Var finns projektet?",
-      5: "Beskriv kort vad ni vill åstadkomma.",
-      6: "Sist — hur når vi dig?",
-      7: "Här är en sammanfattning av din förfrågan:",
-    };
-
-    return (
-      <div className="px-4 py-3">
-        {/* Progress bar */}
-        <div className="mb-4">
-          <div className="flex justify-between items-center mb-1.5">
-            <span className="text-xs font-medium" style={{ color: "var(--funkia-moss)" }}>
-              Steg {requestStep} av 7
-            </span>
-          </div>
-          <div className="h-1.5 rounded-full" style={{ backgroundColor: "var(--funkia-sand)" }}>
-            <div className="h-full rounded-full transition-all duration-400 ease-out"
-              style={{ backgroundColor: "var(--funkia-moss)", width: `${progress * 100}%` }} />
-          </div>
+          {errors.uppdrag && <div className="fw-error">{errors.uppdrag}</div>}
         </div>
-
-        {showTyping && <TypingIndicator />}
-        {samVisible && <SamBubble text={stepPrompts[requestStep]} />}
-
-        {cardsVisible && (
-          <div className="funkia-step-enter">
-            {/* Step 1: Beställartyp */}
-            {requestStep === 1 && (
-              <div className="flex flex-col gap-2 mt-2">
-                {["BRF", "Privat", "Kommun", "Byggbolag", "Annat"].map(opt => (
-                  <button key={opt}
-                    onClick={() => updateForm("beställartyp", opt)}
-                    className="p-3 rounded-xl border text-sm text-left transition-all duration-200"
-                    style={{
-                      backgroundColor: formData.beställartyp === opt ? "var(--funkia-moss)" : "var(--funkia-cream)",
-                      borderColor: formData.beställartyp === opt ? "var(--funkia-moss)" : "var(--funkia-sand)",
-                      color: formData.beställartyp === opt ? "white" : "var(--funkia-ink)",
-                    }}>
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Step 2: Uppdragstyp (multi-select chips) */}
-            {requestStep === 2 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {["Landskapsarkitektur", "Dagvatten", "Förvaltning", "Nyanläggning", "Besiktning", "Rådgivning"].map(opt => (
-                  <button key={opt}
-                    onClick={() => toggleUppdrag(opt)}
-                    className="px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border"
-                    style={{
-                      backgroundColor: formData.uppdrag.includes(opt) ? "var(--funkia-moss)" : "white",
-                      borderColor: formData.uppdrag.includes(opt) ? "var(--funkia-moss)" : "var(--funkia-sand)",
-                      color: formData.uppdrag.includes(opt) ? "white" : "var(--funkia-ink)",
-                    }}>
-                    {formData.uppdrag.includes(opt) && <span className="mr-1">✓</span>}
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Step 3: Projektskede */}
-            {requestStep === 3 && (
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                {["Idé", "Tidigt skede", "Pågående projekt", "Befintlig anläggning"].map(opt => (
-                  <button key={opt}
-                    onClick={() => updateForm("skede", opt)}
-                    className="p-3 rounded-xl border text-sm text-center transition-all duration-200"
-                    style={{
-                      backgroundColor: formData.skede === opt ? "var(--funkia-moss)" : "var(--funkia-cream)",
-                      borderColor: formData.skede === opt ? "var(--funkia-moss)" : "var(--funkia-sand)",
-                      color: formData.skede === opt ? "white" : "var(--funkia-ink)",
-                    }}>
-                    {opt}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Step 4: Ort */}
-            {requestStep === 4 && (
-              <div className="mt-2">
-                <input type="text" value={formData.plats}
-                  onChange={e => updateForm("plats", e.target.value)}
-                  placeholder="T.ex. Stockholm, Södertälje..."
-                  className="w-full px-4 py-3 rounded-xl border text-sm outline-none transition-all duration-200 focus:ring-2"
-                  style={{
-                    borderColor: "var(--funkia-sand)",
-                    backgroundColor: "white",
-                    color: "var(--funkia-ink)",
-                    "--tw-ring-color": "var(--funkia-sage)",
-                  }} />
-              </div>
-            )}
-
-            {/* Step 5: Beskrivning */}
-            {requestStep === 5 && (
-              <div className="mt-2">
-                <textarea value={formData.beskrivning}
-                  onChange={e => { if (e.target.value.length <= 500) updateForm("beskrivning", e.target.value); }}
-                  placeholder="Beskriv ert projekt..."
-                  rows={4}
-                  className="w-full px-4 py-3 rounded-xl border text-sm outline-none resize-none transition-all duration-200 focus:ring-2"
-                  style={{
-                    borderColor: "var(--funkia-sand)",
-                    backgroundColor: "white",
-                    color: "var(--funkia-ink)",
-                    "--tw-ring-color": "var(--funkia-sage)",
-                  }} />
-                <p className="text-xs text-right mt-1" style={{ color: "var(--funkia-sage)" }}>
-                  {formData.beskrivning.length}/500
-                </p>
-              </div>
-            )}
-
-            {/* Step 6: Kontakt */}
-            {requestStep === 6 && (
-              <div className="flex flex-col gap-3 mt-2">
-                {[
-                  { key: "namn", label: "Namn *", type: "text", placeholder: "Ditt namn" },
-                  { key: "företag", label: "Företag / BRF", type: "text", placeholder: "Organisation (valfritt)" },
-                  { key: "epost", label: "E-post *", type: "email", placeholder: "namn@exempel.se" },
-                  { key: "telefon", label: "Telefon *", type: "tel", placeholder: "070-123 45 67" },
-                ].map(field => (
-                  <div key={field.key}>
-                    <label className="text-xs font-medium mb-1 block" style={{ color: "var(--funkia-ink)" }}>
-                      {field.label}
-                    </label>
-                    <input type={field.type} value={formData[field.key]}
-                      onChange={e => updateForm(field.key, e.target.value)}
-                      placeholder={field.placeholder}
-                      className="w-full px-4 py-2.5 rounded-xl border text-sm outline-none transition-all duration-200 focus:ring-2"
-                      style={{
-                        borderColor: errors[field.key] ? "#EF4444" : "var(--funkia-sand)",
-                        backgroundColor: "white",
-                        color: "var(--funkia-ink)",
-                        "--tw-ring-color": errors[field.key] ? "#EF4444" : "var(--funkia-sage)",
-                      }} />
-                    {errors[field.key] && (
-                      <p className="text-xs mt-1" style={{ color: "#EF4444" }}>{errors[field.key]}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Step 7: Summary */}
-            {requestStep === 7 && (
-              <div className="mt-2 flex flex-col gap-3">
-                {[
-                  { label: "Beställartyp", value: formData.beställartyp, step: 1 },
-                  { label: "Uppdragstyper", value: formData.uppdrag.join(", "), step: 2 },
-                  { label: "Projektskede", value: formData.skede, step: 3 },
-                  { label: "Ort", value: formData.plats, step: 4 },
-                  { label: "Beskrivning", value: formData.beskrivning, step: 5 },
-                  { label: "Kontakt", value: `${formData.namn}${formData.företag ? `, ${formData.företag}` : ""}\n${formData.epost}\n${formData.telefon}`, step: 6 },
-                ].map((item, i) => (
-                  <div key={i} className="p-3 rounded-xl border" style={{ backgroundColor: "var(--funkia-cream)", borderColor: "var(--funkia-sand)" }}>
-                    <div className="flex justify-between items-start">
-                      <p className="text-xs font-medium" style={{ color: "var(--funkia-sage)" }}>{item.label}</p>
-                      <button onClick={() => setRequestStep(item.step)}
-                        className="text-xs underline" style={{ color: "var(--funkia-terra)" }}>
-                        Ändra
-                      </button>
-                    </div>
-                    <p className="text-sm mt-1 whitespace-pre-line" style={{ color: "var(--funkia-ink)" }}>{item.value}</p>
-                  </div>
-                ))}
-
-                <button onClick={handleSubmit}
-                  className="w-full py-3.5 rounded-xl text-sm font-semibold text-white transition-all duration-200 hover:opacity-90 mt-1"
-                  style={{ backgroundColor: "var(--funkia-terra)" }}>
-                  Skicka förfrågan →
-                </button>
-              </div>
-            )}
-
-            {/* Next button (steps 1-6) */}
-            {requestStep < 7 && (
-              <button onClick={handleNext}
-                disabled={!isStepValid()}
-                className="w-full py-3 rounded-xl text-sm font-medium text-white mt-4 transition-all duration-200"
-                style={{
-                  backgroundColor: isStepValid() ? "var(--funkia-moss)" : "var(--funkia-sand)",
-                  color: isStepValid() ? "white" : "#9CA3AF",
-                  cursor: isStepValid() ? "pointer" : "not-allowed",
-                }}>
-                Nästa →
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  };
-
-  const renderDone = () => (
-    <div className="px-4 py-6 flex flex-col items-center text-center">
-      {/* Animated checkmark */}
-      <div className="mb-4">
-        <svg width="72" height="72" viewBox="0 0 52 52">
-          <circle cx="26" cy="26" r="25" fill="none" stroke="var(--funkia-moss)" strokeWidth="2"
-            className="funkia-check-circle" />
-          <path d="M14.1 27.2l7.1 7.2 16.7-16.8" fill="none" stroke="var(--funkia-moss)" strokeWidth="2.5"
-            strokeLinecap="round" strokeLinejoin="round" className="funkia-check-mark" />
-        </svg>
-      </div>
-
-      <h3 className="font-serif-funkia text-xl font-semibold mb-2" style={{ color: "var(--funkia-ink)" }}>
-        Tack {formData.namn}! 🌱
-      </h3>
-      <p className="text-sm mb-1" style={{ color: "#6B7B6A" }}>
-        Vi hör av oss inom 24h
-      </p>
-      <p className="text-xs px-3 py-1.5 rounded-full mb-6" style={{ backgroundColor: "var(--funkia-cream)", color: "var(--funkia-sage)" }}>
-        Referens: {referenceId}
-      </p>
-
-      {/* Timeline: Vad händer nu? */}
-      <div className="w-full text-left mb-6">
-        <p className="text-sm font-medium mb-3" style={{ color: "var(--funkia-ink)" }}>Vad händer nu?</p>
-        {[
-          "Vi granskar din förfrågan",
-          "Rätt specialist kontaktar dig",
-          "Ni planerar projektet tillsammans",
-        ].map((step, i) => (
-          <div key={i} className="flex items-start gap-3 mb-3 last:mb-0">
-            <div className="flex flex-col items-center">
-              <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white"
-                style={{ backgroundColor: "var(--funkia-moss)" }}>
-                {i + 1}
-              </div>
-              {i < 2 && <div className="w-0.5 h-4 mt-1" style={{ backgroundColor: "var(--funkia-sand)" }} />}
+      );
+      case 3: return (
+        <div className="fw-step">
+          <div className="fw-step-q">Var befinner sig projektet just nu?</div>
+          {PROJEKTSKEDEN.map((s) => (
+            <div key={s} className={`fw-radio${form.skede === s ? " selected" : ""}`}
+              onClick={() => { setForm({ ...form, skede: s }); setErrors({}); }}>
+              <div className="fw-radio-dot" />{s}
             </div>
-            <p className="text-sm pt-1" style={{ color: "var(--funkia-ink)" }}>{step}</p>
-          </div>
-        ))}
-      </div>
-
-      <div className="flex gap-2 w-full">
-        <button onClick={closeWidget}
-          className="flex-1 py-3 rounded-xl text-sm font-medium border transition-all duration-200"
-          style={{ borderColor: "var(--funkia-sand)", color: "var(--funkia-moss)" }}>
-          Stäng
-        </button>
-        <button onClick={() => { resetWidget(); }}
-          className="flex-1 py-3 rounded-xl text-sm font-medium text-white transition-all duration-200"
-          style={{ backgroundColor: "var(--funkia-moss)" }}>
-          Ställ ny fråga
-        </button>
-      </div>
-    </div>
-  );
-
-  const renderContact = () => (
-    <div className="px-4 py-3">
-      {showTyping && <TypingIndicator />}
-      {samVisible && <SamBubble text="Här hittar ni oss!" />}
-      {cardsVisible && (
-        <div className="flex flex-col gap-3 mt-2" style={{ animation: "funkia-card-in 300ms ease-out forwards" }}>
-          {/* Stockholm */}
-          <div className="p-4 rounded-xl border" style={{ backgroundColor: "var(--funkia-cream)", borderColor: "var(--funkia-sand)" }}>
-            <p className="font-medium text-sm mb-2" style={{ color: "var(--funkia-ink)" }}>Stockholm</p>
-            <div className="flex items-start gap-2 mb-1.5">
-              <PinIcon size={15} color="var(--funkia-sage)" className="flex-shrink-0 mt-0.5" />
-              <p className="text-xs" style={{ color: "#6B7B6A" }}>Ringvägen 100, 118 60 Stockholm</p>
-            </div>
-            <div className="flex items-center gap-2 mb-1.5">
-              <PhoneIcon size={15} color="var(--funkia-sage)" className="flex-shrink-0" />
-              <p className="text-xs" style={{ color: "#6B7B6A" }}>08-669 39 06</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <MailIcon size={15} color="var(--funkia-sage)" className="flex-shrink-0" />
-              <p className="text-xs" style={{ color: "#6B7B6A" }}>info@funkia.se</p>
-            </div>
-          </div>
-
-          {/* Linköping */}
-          <div className="p-4 rounded-xl border" style={{ backgroundColor: "var(--funkia-cream)", borderColor: "var(--funkia-sand)" }}>
-            <p className="font-medium text-sm mb-2" style={{ color: "var(--funkia-ink)" }}>Linköping</p>
-            <div className="flex items-start gap-2 mb-1.5">
-              <PinIcon size={15} color="var(--funkia-sage)" className="flex-shrink-0 mt-0.5" />
-              <p className="text-xs" style={{ color: "#6B7B6A" }}>Storgatan 20, 582 23 Linköping</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <PhoneIcon size={15} color="var(--funkia-sage)" className="flex-shrink-0" />
-              <p className="text-xs" style={{ color: "#6B7B6A" }}>013-31 10 80</p>
-            </div>
-          </div>
-
-          {/* Öppettider */}
-          <div className="p-4 rounded-xl border" style={{ backgroundColor: "var(--funkia-cream)", borderColor: "var(--funkia-sand)" }}>
-            <div className="flex items-center gap-2">
-              <ClockIcon size={15} color="var(--funkia-sage)" className="flex-shrink-0" />
-              <div>
-                <p className="font-medium text-sm" style={{ color: "var(--funkia-ink)" }}>Öppettider</p>
-                <p className="text-xs" style={{ color: "#6B7B6A" }}>Måndag–Fredag 08:00–17:00</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Map placeholder */}
-          <div className="h-32 rounded-xl flex flex-col items-center justify-center gap-2"
-            style={{ backgroundColor: "#E5E1D8", border: "1px solid var(--funkia-sand)" }}>
-            <PinIcon size={28} color="var(--funkia-sage)" />
-            <p className="text-xs font-medium" style={{ color: "var(--funkia-sage)" }}>Stockholm</p>
-          </div>
+          ))}
+          {errors.skede && <div className="fw-error">{errors.skede}</div>}
         </div>
-      )}
-    </div>
-  );
-
-  const renderScreen = () => {
-    switch (screen) {
-      case "home": return renderHome();
-      case "brf": return renderBrf();
-      case "kommun": return renderKommun();
-      case "request": return renderRequest();
-      case "done": return renderDone();
-      case "contact": return renderContact();
-      default: return renderHome();
+      );
+      case 4: return (
+        <div className="fw-step">
+          <div className="fw-step-q">Var finns projektet?</div>
+          <input className={`fw-input${errors.plats ? " error" : ""}`} placeholder="T.ex. Stockholm, Södertälje..."
+            value={form.plats} onChange={(e) => { setForm({ ...form, plats: e.target.value }); setErrors({}); }} />
+          {errors.plats && <div className="fw-error">{errors.plats}</div>}
+        </div>
+      );
+      case 5: return (
+        <div className="fw-step">
+          <div className="fw-step-q">Beskriv kort vad ni vill åstadkomma.</div>
+          <textarea className={`fw-input fw-textarea${errors.beskrivning ? " error" : ""}`}
+            placeholder="Berätta om era tankar och önskemål..."
+            maxLength={500} value={form.beskrivning}
+            onChange={(e) => { setForm({ ...form, beskrivning: e.target.value }); setErrors({}); }} />
+          <div className="fw-char-count">{form.beskrivning.length} / 500</div>
+          {errors.beskrivning && <div className="fw-error">{errors.beskrivning}</div>}
+        </div>
+      );
+      case 6: return (
+        <div className="fw-step">
+          <div className="fw-step-q">Hur når vi dig?</div>
+          {[
+            { key: "namn", label: "Namn *", placeholder: "Ditt namn", type: "text" },
+            { key: "företag", label: "Företag / BRF", placeholder: "Organisation (valfritt)", type: "text" },
+            { key: "epost", label: "E-post *", placeholder: "din@epost.se", type: "email" },
+            { key: "telefon", label: "Telefon *", placeholder: "070-000 00 00", type: "tel" },
+          ].map((f) => (
+            <div key={f.key} className="fw-field">
+              <label className="fw-label">{f.label}</label>
+              <input className={`fw-input${errors[f.key] ? " error" : ""}`} type={f.type}
+                placeholder={f.placeholder} value={form[f.key]}
+                onChange={(e) => { setForm({ ...form, [f.key]: e.target.value }); setErrors({ ...errors, [f.key]: undefined }); }} />
+              {errors[f.key] && <div className="fw-error">{errors[f.key]}</div>}
+            </div>
+          ))}
+        </div>
+      );
+      case 7: return (
+        <div className="fw-step">
+          <div className="fw-step-q">Stämmer allt?</div>
+          {[
+            { label: "Beställartyp", val: form.beställartyp, step: 1 },
+            { label: "Uppdrag", val: form.uppdrag.join(", "), step: 2 },
+            { label: "Projektskede", val: form.skede, step: 3 },
+            { label: "Ort", val: form.plats, step: 4 },
+            { label: "Beskrivning", val: form.beskrivning, step: 5 },
+            { label: "Kontakt", val: `${form.namn}${form.företag ? ` — ${form.företag}` : ""}\n${form.epost}\n${form.telefon}`, step: 6 },
+          ].map((item) => (
+            <div key={item.label} className="fw-summary-card">
+              <div className="fw-summary-row">
+                <span className="fw-summary-lbl">{item.label}</span>
+                <button className="fw-summary-edit" onClick={() => setReqStep(item.step)}>Ändra</button>
+              </div>
+              <div className="fw-summary-val" style={{ whiteSpace: "pre-line" }}>{item.val}</div>
+            </div>
+          ))}
+        </div>
+      );
+      default: return null;
     }
   };
 
-  /* ═══════════════════════════════════════════════════════════════
-     RENDER
-     ═══════════════════════════════════════════════════════════════ */
+  /* ═══════ RENDER ═══════ */
   return (
-    <div className="font-body-funkia" style={{ minHeight: "100vh", backgroundColor: "var(--funkia-mist)" }}>
-      {/* ─── MOCK WEBSITE ─── */}
-      <MockWebsite mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
-
-      {/* ─── DEMO HINT TOOLTIP ─── */}
-      {!hasOpenedOnce && buttonVisible && !isOpen && (
-        <div className="fixed z-[9998] right-6 bottom-[104px] flex flex-col items-end"
-          style={{ animation: "funkia-hint-bounce 2s ease-in-out infinite" }}>
-          <div className="px-4 py-2.5 rounded-2xl shadow-lg text-sm font-medium whitespace-nowrap"
-            style={{ backgroundColor: "white", color: "var(--funkia-ink)", border: "1px solid var(--funkia-sand)" }}>
-            Prova vår AI-guide ✨
-          </div>
-          <svg width="16" height="10" viewBox="0 0 16 10" className="mr-6 -mt-0.5">
-            <path d="M0 0 L8 10 L16 0" fill="white" />
-          </svg>
+    <div className="fw-root">
+      {/* ── Bubble hint ── */}
+      {bubbleVisible && !hasOpened && (
+        <div className={`fw-bubble${!bubbleVisible ? " hidden" : ""}`} onClick={toggle}>
+          <button className="fw-bubble-close" onClick={(e) => { e.stopPropagation(); setBubbleVisible(false); }}>✕</button>
+          <div className="fw-bubble-text">🌿 Behöver ni hjälp med er utemiljö? Starta en förfrågan →</div>
         </div>
       )}
 
-      {/* ─── FLOATING BUTTON ─── */}
-      <div className="fixed z-[9999] bottom-6 right-6">
-        {/* Ping rings */}
-        {!isOpen && buttonVisible && (
-          <>
-            <span className="absolute inset-0 rounded-full"
-              style={{ backgroundColor: "var(--funkia-moss)", opacity: 0, animation: "funkia-ping 2s ease-out infinite" }} />
-            <span className="absolute inset-0 rounded-full"
-              style={{ backgroundColor: "var(--funkia-moss)", opacity: 0, animation: "funkia-ping 2s ease-out 600ms infinite" }} />
-          </>
-        )}
+      {/* ── Launcher ── */}
+      <button className={`fw-btn${isOpen ? " open" : ""}`} onClick={toggle}>
+        <span className="fw-pulse" />
+        <span className="fw-pulse" />
+        {!isOpen && <span className="fw-notif">1</span>}
+        <span className="ic-leaf"><SvgLeaf size={26} /></span>
+        <span className="ic-close"><SvgClose size={22} /></span>
+      </button>
 
-        <button onClick={() => isOpen ? closeWidget() : openWidget()}
-          className="relative w-16 h-16 rounded-full flex items-center justify-center shadow-lg transition-transform duration-300 hover:scale-105"
-          style={{
-            background: "linear-gradient(135deg, #2F4A3A 0%, #3D5E4B 100%)",
-            opacity: buttonVisible ? 1 : 0,
-            transition: "opacity 600ms ease-out, transform 300ms ease-out",
-          }}>
-          <div style={{ transition: "transform 300ms ease-out", transform: isOpen ? "rotate(90deg)" : "rotate(0deg)" }}>
-            {isOpen
-              ? <CloseIcon size={24} color="white" />
-              : <LeafIcon size={28} color="white" />
-            }
+      {/* ── Panel ── */}
+      <div className={`fw-panel${isOpen ? " visible" : ""}`}>
+        {/* Header */}
+        <div className="fw-hdr">
+          <div className="fw-hdr-deco" />
+          <button className={`fw-hdr-back${showBack ? " show" : ""}`}
+            onClick={goBack}>
+            <SvgChevronLeft size={20} color="rgba(255,255,255,.7)" />
+          </button>
+          <div className="fw-hdr-center">
+            <div className="fw-avatar">
+              <SvgLeafSmall size={20} color="var(--f-moss)" />
+            </div>
+            <div className="fw-hdr-info">
+              <div className="fw-hdr-name">{TITLES[screen] || "Funkia"}</div>
+              <div className="fw-hdr-status"><span className="fw-online-dot" />Online nu</div>
+            </div>
           </div>
+          <div className="fw-hdr-actions">
+            <button className="fw-hdr-btn" onClick={() => showScreen("contact")}>
+              <SvgPhone size={15} color="rgba(255,255,255,.7)" />
+            </button>
+            <button className="fw-hdr-btn" onClick={toggle}>
+              <SvgClose size={16} color="rgba(255,255,255,.7)" />
+            </button>
+          </div>
+        </div>
 
-          {/* Notification badge */}
-          {!isOpen && !hasOpenedOnce && buttonVisible && (
-            <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold text-white"
-              style={{ backgroundColor: "#EF4444" }}>
-              1
-            </span>
-          )}
-        </button>
-      </div>
+        {/* Screens */}
+        <div className="fw-screens">
 
-      {/* ─── WIDGET PANEL ─── */}
-      {isOpen && (
-        <div className="funkia-panel-enter fixed z-[9998] sm:bottom-24 sm:right-6 sm:w-[400px] sm:h-[620px] sm:rounded-3xl
-          bottom-0 right-0 w-full h-full sm:max-h-[620px]
-          flex flex-col overflow-hidden shadow-2xl"
-          style={{ backgroundColor: "var(--funkia-mist)" }}>
-
-          {/* ─── HEADER ─── */}
-          <div className="relative flex items-center px-4 py-4 flex-shrink-0"
-            style={{ backgroundColor: "var(--funkia-moss)", minHeight: "72px" }}>
-            {/* Decorative leaf silhouettes */}
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              <svg className="absolute -right-4 -top-4 opacity-[0.08]" width="120" height="120" viewBox="0 0 24 24" fill="white" stroke="none">
-                <path d="M12 2C6.5 2 2 6.5 2 12c0 3 1.5 5.5 3.5 7.5C7 21 9 22 12 22c5.5 0 10-4.5 10-10" />
-              </svg>
-              <svg className="absolute -left-6 bottom-0 opacity-[0.08] rotate-45" width="80" height="80" viewBox="0 0 24 24" fill="white" stroke="none">
-                <path d="M12 2C6.5 2 2 6.5 2 12c0 3 1.5 5.5 3.5 7.5C7 21 9 22 12 22c5.5 0 10-4.5 10-10" />
-              </svg>
-            </div>
-
-            {/* Left: Back button */}
-            <div className="w-9 flex-shrink-0">
-              {showBack && (
-                <button onClick={goBack}
-                  className="w-9 h-9 rounded-full flex items-center justify-center transition-colors duration-200 hover:bg-white/10">
-                  <ChevronLeftIcon size={20} color="white" />
-                </button>
-              )}
-            </div>
-
-            {/* Center: Avatar + Name */}
-            <div className="flex-1 flex items-center justify-center gap-2 relative z-10">
-              <div className="w-9 h-9 rounded-full flex items-center justify-center"
-                style={{ backgroundColor: "var(--funkia-sand)" }}>
-                <LeafIcon size={18} color="var(--funkia-moss)" />
+          {/* ── HOME ── */}
+          <div className={sc("home")}>
+            <div className="fw-home-hero">
+              <div className="fw-hero-label">🌿 Välkommen till Funkia</div>
+              <div className="fw-hero-title">
+                Hej! Hur kan vi hjälpa dig med din <b>utemiljö</b>?
               </div>
-              <div>
-                <p className="text-white font-semibold text-sm leading-tight">Sam</p>
-                <div className="flex items-center gap-1">
-                  <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-                  <span className="text-xs text-white/70">Online nu</span>
+              <div className="fw-hero-chips">
+                <button className="fw-chip" onClick={() => showScreen("request")}>📋 Projektförfrågan</button>
+                <button className="fw-chip" onClick={() => showScreen("chat")}>💬 Fråga Sam</button>
+                <button className="fw-chip" onClick={() => showScreen("contact")}>📞 Kontakt</button>
+              </div>
+            </div>
+
+            <div className="fw-home-body">
+              <div className="fw-home-col">
+                {/* Showcase card */}
+                <div className="fw-showcase">
+                  <div className="fw-showcase-head">
+                    <span>🌱 Aktuellt projekt</span>
+                  </div>
+                  <div className="fw-showcase-body">
+                    <div className="fw-showcase-title">Brf Solängen — Gårdsupprustning</div>
+                    <div className="fw-showcase-desc">
+                      Totalomgestaltning av innergård i Södermalm. Biologisk mångfald, dagvatten och sociala ytor i samklang.
+                    </div>
+                    <div className="fw-showcase-tags">
+                      <span className="fw-tag">Gestaltning</span>
+                      <span className="fw-tag">Dagvatten</span>
+                      <span className="fw-tag">BRF</span>
+                    </div>
+                    <button className="fw-showcase-cta" onClick={() => showScreen("brf")}>Se våra BRF-tjänster →</button>
+                  </div>
+                </div>
+              </div>
+
+              <div className="fw-home-col">
+                <div className="fw-sec-label">Snabbval</div>
+                <div className="fw-grid">
+                  <div className="fw-tile" onClick={() => showScreen("brf")}>
+                    <div className="fw-tile-ic">🏡</div>
+                    <div className="fw-tile-name">Privat & BRF</div>
+                    <div className="fw-tile-sub">Gårdar & trädgårdar</div>
+                  </div>
+                  <div className="fw-tile" onClick={() => showScreen("kommun")}>
+                    <div className="fw-tile-ic">🏛️</div>
+                    <div className="fw-tile-name">Kommun</div>
+                    <div className="fw-tile-sub">Parker & stadsrum</div>
+                  </div>
+                  <div className="fw-tile" onClick={() => showScreen("request")}>
+                    <div className="fw-tile-ic">✏️</div>
+                    <div className="fw-tile-name">Förfrågan</div>
+                    <div className="fw-tile-sub">Offert inom 24h</div>
+                  </div>
+                  <div className="fw-tile" onClick={() => showScreen("chat")}>
+                    <div className="fw-tile-ic">💬</div>
+                    <div className="fw-tile-name">Chatta</div>
+                    <div className="fw-tile-sub">Fråga Sam</div>
+                  </div>
                 </div>
               </div>
             </div>
 
-            {/* Right: Phone + Close */}
-            <div className="flex items-center gap-1 flex-shrink-0">
-              <button onClick={() => navigateTo("contact")}
-                className="w-9 h-9 rounded-full flex items-center justify-center transition-colors duration-200 hover:bg-white/10">
-                <PhoneIcon size={18} color="white" />
-              </button>
-              <button onClick={closeWidget}
-                className="w-9 h-9 rounded-full flex items-center justify-center transition-colors duration-200 hover:bg-white/10">
-                <CloseIcon size={18} color="white" />
+            <button className="fw-home-cta" onClick={() => showScreen("request")}>
+              <SvgArrowRight size={14} color="white" />
+              Starta en projektförfrågan
+            </button>
+          </div>
+
+          {/* ── BRF ── */}
+          <div className={sc("brf")}>
+            <div className="fw-screen-head">
+              <h2>Privat & BRF</h2>
+              <p>Vi hjälper er att skapa utemiljöer som berikar vardagen och höjer fastighetsvärdet.</p>
+            </div>
+            <div className="fw-svc-card" onClick={() => showScreen("request")}>
+              <div className="fw-svc-ic">📋</div>
+              <div>
+                <div className="fw-svc-name">Årligt förvaltningsavtal</div>
+                <div className="fw-svc-desc">Skötselplaner och löpande rådgivning</div>
+              </div>
+            </div>
+            <div className="fw-svc-card" onClick={() => showScreen("request")}>
+              <div className="fw-svc-ic">🌿</div>
+              <div>
+                <div className="fw-svc-name">Upprustning av gårdsmiljö</div>
+                <div className="fw-svc-desc">Ny gestaltning som höjer trivseln</div>
+              </div>
+            </div>
+            <div className="fw-svc-card" onClick={() => showScreen("request")}>
+              <div className="fw-svc-ic">💧</div>
+              <div>
+                <div className="fw-svc-name">Dagvattenlösning för fastighet</div>
+                <div className="fw-svc-desc">Hållbar hantering anpassad för er</div>
+              </div>
+            </div>
+            <div className="fw-actions">
+              <button className="fw-action-btn fw-action-primary" onClick={() => showScreen("request")}>Starta förfrågan</button>
+              <button className="fw-action-btn fw-action-secondary" onClick={() => showScreen("contact")}>Kontakta oss</button>
+            </div>
+          </div>
+
+          {/* ── KOMMUN ── */}
+          <div className={sc("kommun")}>
+            <div className="fw-screen-head">
+              <h2>Kommun & Byggbolag</h2>
+              <p>Erfaren partner i komplexa stadsutvecklingsprojekt med höga krav på hållbarhet.</p>
+            </div>
+            <div className="fw-svc-card" onClick={() => showScreen("request")}>
+              <div className="fw-svc-ic">📐</div>
+              <div>
+                <div className="fw-svc-name">Ramavtal landskapsarkitektur</div>
+                <div className="fw-svc-desc">Löpande stöd i plan- och gestaltningsfrågor</div>
+              </div>
+            </div>
+            <div className="fw-svc-card" onClick={() => showScreen("request")}>
+              <div className="fw-svc-ic">💧</div>
+              <div>
+                <div className="fw-svc-name">Dagvattenutredning</div>
+                <div className="fw-svc-desc">Systemlösningar och blågrön infrastruktur</div>
+              </div>
+            </div>
+            <div className="fw-svc-card" onClick={() => showScreen("request")}>
+              <div className="fw-svc-ic">🌳</div>
+              <div>
+                <div className="fw-svc-name">Offentliga parkmiljöer</div>
+                <div className="fw-svc-desc">Gestaltning av parker, torg och lekplatser</div>
+              </div>
+            </div>
+            <div className="fw-actions">
+              <button className="fw-action-btn fw-action-primary" onClick={() => showScreen("request")}>Starta förfrågan</button>
+              <button className="fw-action-btn fw-action-secondary" onClick={() => showScreen("contact")}>Kontakta oss</button>
+            </div>
+          </div>
+
+          {/* ── REQUEST FLOW ── */}
+          <div className={sc("request")}>
+            <div className="fw-progress">
+              <div className="fw-progress-label">Steg {reqStep} av 7</div>
+              <div className="fw-progress-bar">
+                <div className="fw-progress-fill" style={{ width: `${(reqStep / 7) * 100}%` }} />
+              </div>
+            </div>
+            {renderRequestStep()}
+            <div className="fw-next-bar">
+              {reqStep < 7 ? (
+                <button className="fw-next-btn" onClick={nextStep}>
+                  Nästa <SvgArrowRight size={13} color="white" />
+                </button>
+              ) : (
+                <button className="fw-next-btn fw-terra-btn" onClick={submitRequest}>
+                  Skicka förfrågan <SvgArrowRight size={13} color="white" />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* ── DONE ── */}
+          <div className={sc("done")}>
+            <div className="fw-done">
+              <div className="fw-check-circle">
+                <svg viewBox="0 0 72 72">
+                  <circle className="circle" cx="36" cy="36" r="32" />
+                  <polyline className="check" points="22,36 32,46 50,28" />
+                </svg>
+              </div>
+              <div className="fw-done-title">Tack{form.namn ? `, ${form.namn}` : ""}! 🌱</div>
+              <div className="fw-done-sub">Vi hör av oss inom 24 timmar.</div>
+              <div className="fw-done-ref">Ref: FK-2026-0414-A{Math.floor(Math.random() * 90 + 10)}</div>
+
+              <div className="fw-timeline">
+                <div className="fw-timeline-title">Vad händer nu?</div>
+                <div className="fw-tl-item">
+                  <div className="fw-tl-dot">1</div>
+                  <div className="fw-tl-text">Vi granskar din förfrågan</div>
+                </div>
+                <div className="fw-tl-item">
+                  <div className="fw-tl-dot">2</div>
+                  <div className="fw-tl-text">Rätt specialist kontaktar dig</div>
+                </div>
+                <div className="fw-tl-item">
+                  <div className="fw-tl-dot">3</div>
+                  <div className="fw-tl-text">Ni planerar projektet tillsammans</div>
+                </div>
+              </div>
+
+              <div className="fw-done-actions">
+                <button className="fw-done-btn" style={{ background: "var(--f-mist)", border: "1px solid var(--f-border)", color: "var(--f-ink)" }}
+                  onClick={toggle}>Stäng</button>
+                <button className="fw-done-btn" style={{ background: "var(--f-moss)", border: "none", color: "white" }}
+                  onClick={() => { resetAll(); goHome(); }}>Ställ ny fråga</button>
+              </div>
+            </div>
+          </div>
+
+          {/* ── CHAT ── */}
+          <div className={sc("chat")} style={{ display: "flex", flexDirection: "column", background: "var(--f-mist)" }}>
+            <div className="fw-chat-msgs" ref={chatRef}>
+              {chatMsgs.map((msg, i) => {
+                if (msg.from === "typing") return (
+                  <div key={`typing-${i}`} className="fw-cb bot">
+                    <div className="fw-cb-av"><SvgLeafSmall size={14} color="var(--f-moss)" /></div>
+                    <div className="fw-cb-msg"><div className="fw-typing-dots"><span /><span /><span /></div></div>
+                  </div>
+                );
+                return (
+                  <div key={i} className={`fw-cb ${msg.from === "usr" ? "usr" : "bot"}`}>
+                    {msg.from === "bot" && <div className="fw-cb-av"><SvgLeafSmall size={14} color="var(--f-moss)" /></div>}
+                    <div className="fw-cb-msg">{msg.text}</div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="fw-chat-bar">
+              <textarea className="fw-chat-input" ref={textareaRef}
+                placeholder="Skriv din fråga..." rows={1}
+                value={chatInput}
+                onChange={(e) => setChatInput(e.target.value)}
+                onKeyDown={chatKey}
+                onInput={(e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 96) + "px"; }}
+              />
+              <button className="fw-chat-send" onClick={sendChat}>
+                <SvgSend size={15} />
               </button>
             </div>
           </div>
 
-          {/* ─── SCROLLABLE CONTENT ─── */}
-          <div ref={scrollRef} className="flex-1 overflow-y-auto funkia-scroll">
-            {renderScreen()}
-          </div>
-
-          {/* ─── FOOTER ─── */}
-          <div className="flex-shrink-0 py-2.5 flex items-center justify-center border-t"
-            style={{ backgroundColor: "white", borderColor: "var(--funkia-sand)" }}>
-            <div className="flex items-center gap-1.5 opacity-55">
-              <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: "var(--funkia-moss)" }} />
-              <span className="text-xs" style={{ color: "var(--funkia-ink)" }}>Drivs av Samify</span>
+          {/* ── CONTACT ── */}
+          <div className={sc("contact")}>
+            <div className="fw-screen-head">
+              <h2>Kontakta oss</h2>
+              <p>Vi finns i Stockholm och Linköping</p>
+            </div>
+            <div className="fw-ct-card">
+              <div className="fw-ct-ic">📞</div>
+              <div><div className="fw-ct-lbl">Ring oss</div><div className="fw-ct-val">08-669 39 06</div></div>
+            </div>
+            <div className="fw-ct-card">
+              <div className="fw-ct-ic">✉️</div>
+              <div><div className="fw-ct-lbl">Mejla oss</div><div className="fw-ct-val">info@funkia.se</div></div>
+            </div>
+            <div className="fw-ct-card" onClick={() => showScreen("chat")}>
+              <div className="fw-ct-ic">💬</div>
+              <div><div className="fw-ct-lbl">Chatta med Sam</div><div className="fw-ct-val">Svarar direkt</div></div>
+            </div>
+            <div className="fw-info-block">
+              <div className="fw-info-lbl">📍 Stockholm</div>
+              <div className="fw-info-text">Ringvägen 100, 118 60 Stockholm</div>
+            </div>
+            <div className="fw-info-block">
+              <div className="fw-info-lbl">📍 Linköping</div>
+              <div className="fw-info-text">Storgatan 20, 582 23 Linköping</div>
+            </div>
+            <div className="fw-info-block">
+              <div className="fw-info-lbl">🕐 Öppettider</div>
+              <div className="fw-info-text">Måndag–Fredag 08:00–17:00</div>
+            </div>
+            <div className="fw-map">
+              <SvgPin size={18} /> Stockholm · Linköping
             </div>
           </div>
+
         </div>
-      )}
+
+        {/* Footer */}
+        <div className="fw-foot">
+          <button className="fw-foot-link"><span className="fw-foot-dot" />Powered by Samify</button>
+        </div>
+      </div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════════
-   MOCK WEBSITE (background page)
+   MOCK FUNKIA WEBSITE (background context for the demo)
    ═══════════════════════════════════════════════════════════════ */
-function MockWebsite({ mobileMenuOpen, setMobileMenuOpen }) {
+
+function FunkiaMockSite() {
+  const [menuOpen, setMenuOpen] = useState(false);
+
   return (
-    <div className="font-body-funkia">
-      {/* ─── NAV ─── */}
-      <nav className="sticky top-0 z-50 border-b backdrop-blur-md"
-        style={{ backgroundColor: "rgba(245, 241, 232, 0.92)", borderColor: "var(--funkia-sand)" }}>
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
-          {/* Logo */}
-          <div className="flex items-center gap-2">
-            <LeafIcon size={24} color="var(--funkia-moss)" />
-            <span className="font-serif-funkia text-xl font-bold" style={{ color: "var(--funkia-moss)" }}>Funkia</span>
+    <div style={{ fontFamily: "var(--f-font)", color: "var(--f-ink)" }}>
+      {/* Nav */}
+      <nav style={{
+        position: "sticky", top: 0, zIndex: 40,
+        background: "rgba(245,241,232,0.92)", backdropFilter: "blur(12px)",
+        borderBottom: "1px solid var(--f-sand)",
+      }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 20px", height: 60, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <SvgLeafSmall size={22} color="var(--f-moss)" />
+            <span style={{ fontFamily: "var(--f-serif)", fontSize: 22, fontWeight: 700, color: "var(--f-moss)" }}>Funkia</span>
           </div>
-          {/* Desktop links */}
-          <div className="hidden sm:flex items-center gap-8">
-            {["Projekt", "Tjänster", "Om oss", "Kontakt"].map(link => (
-              <a key={link} href="#" className="text-sm font-medium transition-colors duration-200 hover:opacity-70"
-                style={{ color: "var(--funkia-ink)" }}>
-                {link}
-              </a>
+          <div style={{ display: "flex", gap: 32, fontSize: 14, fontWeight: 500 }} className="fw-nav-desktop">
+            {["Projekt", "Tjänster", "Om oss", "Kontakt"].map((item) => (
+              <a key={item} href="#" style={{ color: "var(--f-ink)", textDecoration: "none" }}>{item}</a>
             ))}
           </div>
-          {/* Mobile hamburger */}
-          <button className="sm:hidden w-10 h-10 flex items-center justify-center"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>
-            <MenuIcon size={24} color="var(--funkia-ink)" />
-          </button>
         </div>
-        {/* Mobile menu dropdown */}
-        {mobileMenuOpen && (
-          <div className="sm:hidden border-t px-6 py-4 flex flex-col gap-3"
-            style={{ borderColor: "var(--funkia-sand)", backgroundColor: "var(--funkia-cream)" }}>
-            {["Projekt", "Tjänster", "Om oss", "Kontakt"].map(link => (
-              <a key={link} href="#" className="text-sm font-medium py-1" style={{ color: "var(--funkia-ink)" }}>
-                {link}
-              </a>
-            ))}
-          </div>
-        )}
       </nav>
 
-      {/* ─── HERO ─── */}
-      <section className="relative overflow-hidden" style={{ minHeight: "520px" }}>
-        {/* Background gradient */}
-        <div className="absolute inset-0"
-          style={{ background: "linear-gradient(135deg, #2F4A3A 0%, #4A7056 50%, #A8BAA0 100%)" }} />
-
-        {/* Decorative leaf shapes */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden">
-          <svg className="absolute top-10 left-10 opacity-[0.07]" width="300" height="300" viewBox="0 0 24 24" fill="white">
-            <path d="M12 2C6.5 2 2 6.5 2 12c0 3 1.5 5.5 3.5 7.5C7 21 9 22 12 22c5.5 0 10-4.5 10-10" />
-          </svg>
-          <svg className="absolute bottom-0 right-0 opacity-[0.05] rotate-180" width="400" height="400" viewBox="0 0 24 24" fill="white">
-            <path d="M12 2C6.5 2 2 6.5 2 12c0 3 1.5 5.5 3.5 7.5C7 21 9 22 12 22c5.5 0 10-4.5 10-10" />
-          </svg>
-          <svg className="absolute top-1/2 right-1/4 opacity-[0.04] -rotate-45" width="200" height="200" viewBox="0 0 24 24" fill="white">
-            <path d="M12 2C6.5 2 2 6.5 2 12c0 3 1.5 5.5 3.5 7.5C7 21 9 22 12 22c5.5 0 10-4.5 10-10" />
+      {/* Hero */}
+      <section style={{
+        background: "linear-gradient(135deg, #2F4A3A 0%, #3d6049 50%, #A8BAA0 100%)",
+        minHeight: 480, position: "relative", overflow: "hidden",
+        display: "flex", alignItems: "center",
+      }}>
+        <div style={{ position: "absolute", inset: 0, opacity: 0.08 }}>
+          <svg width="100%" height="100%" viewBox="0 0 1200 600" fill="white">
+            <ellipse cx="200" cy="300" rx="180" ry="260" transform="rotate(-20 200 300)" />
+            <ellipse cx="900" cy="200" rx="140" ry="220" transform="rotate(15 900 200)" />
+            <ellipse cx="600" cy="500" rx="200" ry="120" transform="rotate(-5 600 500)" />
           </svg>
         </div>
-
-        <div className="relative max-w-6xl mx-auto px-6 py-24 sm:py-32 flex flex-col items-start justify-center" style={{ minHeight: "520px" }}>
-          <h1 className="font-serif-funkia text-4xl sm:text-5xl lg:text-6xl font-bold text-white leading-tight max-w-2xl mb-6">
-            Livsmiljöer för framtidens hållbara samhälle
-          </h1>
-          <p className="text-base sm:text-lg text-white/80 max-w-xl mb-10 leading-relaxed">
-            Funkia är ett landskapsarkitektkontor som skapar gröna miljöer med omsorg om både människor och natur. Sedan 1991 har vi gestaltat parker, bostadsgårdar och stadsrum i hela Sverige.
-          </p>
-          <div className="flex flex-wrap gap-4">
-            <a href="#tjanster"
-              className="px-8 py-3.5 rounded-xl text-sm font-semibold transition-all duration-200 hover:opacity-90"
-              style={{ backgroundColor: "var(--funkia-cream)", color: "var(--funkia-moss)" }}>
-              Våra tjänster
-            </a>
-            <a href="#kontakt"
-              className="px-8 py-3.5 rounded-xl text-sm font-semibold border-2 border-white/40 text-white transition-all duration-200 hover:bg-white/10">
-              Kontakta oss
-            </a>
+        <div style={{ maxWidth: 1100, margin: "0 auto", padding: "60px 20px", position: "relative" }}>
+          <div style={{ maxWidth: 600 }}>
+            <h1 style={{ fontFamily: "var(--f-serif)", fontSize: "clamp(32px, 5vw, 54px)", fontWeight: 700, lineHeight: 1.15, color: "var(--f-cream)", marginBottom: 20 }}>
+              Livsmiljöer för framtidens hållbara samhälle
+            </h1>
+            <p style={{ fontSize: "clamp(16px, 2vw, 19px)", lineHeight: 1.6, color: "var(--f-cream)", opacity: 0.9, marginBottom: 28 }}>
+              Funkia är ett landskapsarkitektkontor som skapar gröna miljöer med omsorg om både människor och natur. Sedan 1991 har vi gestaltat parker, bostadsgårdar och stadsrum i hela Sverige.
+            </p>
+            <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+              <a href="#services" style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                padding: "12px 24px", borderRadius: 12,
+                background: "var(--f-cream)", color: "var(--f-moss)",
+                fontSize: 14, fontWeight: 600, textDecoration: "none",
+              }}>Våra tjänster</a>
+              <a href="#contact" style={{
+                display: "inline-flex", alignItems: "center", gap: 8,
+                padding: "12px 24px", borderRadius: 12,
+                border: "1.5px solid rgba(245,241,232,0.4)", color: "var(--f-cream)",
+                fontSize: 14, fontWeight: 600, textDecoration: "none",
+              }}>Kontakta oss</a>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* ─── SERVICES SECTION ─── */}
-      <section id="tjanster" className="py-20 sm:py-24" style={{ backgroundColor: "var(--funkia-cream)" }}>
-        <div className="max-w-6xl mx-auto px-6">
-          <h2 className="font-serif-funkia text-3xl sm:text-4xl font-bold text-center mb-4" style={{ color: "var(--funkia-ink)" }}>
-            Våra tjänster
-          </h2>
-          <p className="text-center text-sm mb-12 max-w-lg mx-auto" style={{ color: "#6B7B6A" }}>
-            Vi erbjuder helhetslösningar inom landskapsarkitektur, dagvattenhantering och förvaltning av utemiljöer.
-          </p>
-          <div className="grid sm:grid-cols-3 gap-6">
+      {/* Services */}
+      <section id="services" style={{ background: "var(--f-cream)", padding: "clamp(48px, 8vw, 80px) 20px" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto" }}>
+          <div style={{ textAlign: "center", marginBottom: 48 }}>
+            <h2 style={{ fontFamily: "var(--f-serif)", fontSize: "clamp(26px, 4vw, 38px)", fontWeight: 700, color: "var(--f-moss)", marginBottom: 8 }}>Våra tjänster</h2>
+            <p style={{ fontSize: 15, color: "#8E8E93", maxWidth: 500, margin: "0 auto" }}>Helhetslösningar inom landskapsarkitektur, dagvatten och förvaltning.</p>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 20 }}>
             {[
-              {
-                emoji: "🌿",
-                title: "Landskapsarkitektur",
-                desc: "Gestaltning av parker, torg, bostadsgårdar och offentliga miljöer med fokus på hållbarhet och biologisk mångfald.",
-              },
-              {
-                emoji: "💧",
-                title: "Dagvatten",
-                desc: "Systemlösningar för hållbar dagvattenhantering. Blågrön infrastruktur som skapar mervärde för staden.",
-              },
-              {
-                emoji: "🌳",
-                title: "Förvaltning",
-                desc: "Skötselplaner, besiktningar och löpande rådgivning. Vi hjälper er att förvalta och utveckla era gröna miljöer.",
-              },
-            ].map((service, i) => (
-              <div key={i} className="p-8 rounded-2xl border transition-shadow duration-300 hover:shadow-md"
-                style={{ backgroundColor: "white", borderColor: "var(--funkia-sand)" }}>
-                <div className="text-3xl mb-4">{service.emoji}</div>
-                <h3 className="font-serif-funkia text-xl font-semibold mb-3" style={{ color: "var(--funkia-ink)" }}>
-                  {service.title}
-                </h3>
-                <p className="text-sm leading-relaxed" style={{ color: "#6B7B6A" }}>
-                  {service.desc}
-                </p>
+              { icon: "🌿", title: "Landskapsarkitektur", desc: "Gestaltning av parker, bostadsgårdar, torg och offentliga rum som berikar vardagen." },
+              { icon: "💧", title: "Dagvatten", desc: "Hållbara dagvattenlösningar — regnbäddar, svackdiken och blågrön infrastruktur." },
+              { icon: "🌳", title: "Förvaltning", desc: "Skötselplaner, besiktningar och kvalitetssäkring av gröna anläggningar." },
+            ].map((svc) => (
+              <div key={svc.title} style={{
+                background: "white", border: "1px solid var(--f-sand)", borderRadius: 16,
+                padding: 28, transition: "transform .2s",
+              }}>
+                <span style={{ fontSize: 32 }}>{svc.icon}</span>
+                <h3 style={{ fontFamily: "var(--f-serif)", fontSize: 20, fontWeight: 700, color: "var(--f-moss)", margin: "16px 0 8px" }}>{svc.title}</h3>
+                <p style={{ fontSize: 14, lineHeight: 1.6, color: "#6B7A6E" }}>{svc.desc}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      {/* ─── ABOUT SECTION ─── */}
-      <section className="py-20 sm:py-24" style={{ background: "linear-gradient(180deg, white 0%, var(--funkia-cream) 100%)" }}>
-        <div className="max-w-3xl mx-auto px-6">
-          <h2 className="font-serif-funkia text-3xl sm:text-4xl font-bold mb-6" style={{ color: "var(--funkia-ink)" }}>
-            Om Funkia
-          </h2>
-          <p className="text-sm leading-relaxed mb-4" style={{ color: "#4A5B49" }}>
-            Funkia grundades 1991 och har sedan dess vuxit till ett av Sveriges mest erfarna landskapsarkitektkontor. Med kontor i Stockholm och Linköping arbetar vi med uppdrag i hela landet — från små bostadsgårdar till stora stadsbyggnadsprojekt.
+      {/* About */}
+      <section style={{ background: "linear-gradient(180deg, white 0%, var(--f-cream) 100%)", padding: "clamp(48px, 8vw, 80px) 20px" }}>
+        <div style={{ maxWidth: 700, margin: "0 auto", textAlign: "center" }}>
+          <h2 style={{ fontFamily: "var(--f-serif)", fontSize: "clamp(26px, 4vw, 38px)", fontWeight: 700, color: "var(--f-moss)", marginBottom: 20 }}>Om Funkia</h2>
+          <p style={{ fontSize: 15, lineHeight: 1.7, color: "var(--f-ink)", marginBottom: 16 }}>
+            Funkia grundades 1991 och är idag ett av Sveriges ledande landskapsarkitektkontor. Med kontor i Stockholm och Linköping arbetar vi med uppdrag i hela landet — från intima trädgårdar till storskaliga stadsutvecklingsprojekt.
           </p>
-          <p className="text-sm leading-relaxed" style={{ color: "#4A5B49" }}>
-            Vår filosofi bygger på att skapa livsmiljöer som är vackra, hållbara och funktionella. Vi kombinerar kreativ gestaltning med teknisk kompetens inom dagvatten, växtkunskap och ekologi. Resultatet är gröna platser som människor trivs i och naturen mår bra av.
+          <p style={{ fontSize: 15, lineHeight: 1.7, color: "var(--f-ink)" }}>
+            Vi tror att en väl gestaltad utemiljö gör skillnad i människors liv. Vår drivkraft är att skapa platser där natur och vardagsliv möts — hållbart, vackert och funktionellt.
           </p>
         </div>
       </section>
 
-      {/* ─── FOOTER ─── */}
-      <footer className="py-16" style={{ backgroundColor: "var(--funkia-moss)" }}>
-        <div className="max-w-6xl mx-auto px-6">
-          <div className="grid sm:grid-cols-4 gap-10 mb-12">
-            {/* Brand */}
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <LeafIcon size={22} color="var(--funkia-cream)" />
-                <span className="font-serif-funkia text-lg font-bold" style={{ color: "var(--funkia-cream)" }}>Funkia</span>
-              </div>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--funkia-sage)" }}>
-                Landskapsarkitektur med omsorg om människor och natur sedan 1991.
-              </p>
+      {/* Footer */}
+      <footer style={{ background: "var(--f-moss)", color: "var(--f-cream)", padding: "48px 20px" }}>
+        <div style={{ maxWidth: 1100, margin: "0 auto", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 32 }}>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <SvgLeaf size={18} color="var(--f-cream)" />
+              <span style={{ fontFamily: "var(--f-serif)", fontSize: 18, fontWeight: 700 }}>Funkia</span>
             </div>
-            {/* Stockholm */}
-            <div>
-              <p className="font-semibold text-sm mb-3" style={{ color: "var(--funkia-cream)" }}>Stockholm</p>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--funkia-sage)" }}>
-                Ringvägen 100<br />118 60 Stockholm<br />08-669 39 06
-              </p>
-            </div>
-            {/* Linköping */}
-            <div>
-              <p className="font-semibold text-sm mb-3" style={{ color: "var(--funkia-cream)" }}>Linköping</p>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--funkia-sage)" }}>
-                Storgatan 20<br />582 23 Linköping<br />013-31 10 80
-              </p>
-            </div>
-            {/* Contact */}
-            <div>
-              <p className="font-semibold text-sm mb-3" style={{ color: "var(--funkia-cream)" }}>Kontakt</p>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--funkia-sage)" }}>
-                info@funkia.se<br />Måndag–Fredag<br />08:00–17:00
-              </p>
-            </div>
+            <p style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.6 }}>Landskapsarkitektur med omsorg om framtiden.</p>
           </div>
-          <div className="border-t pt-6" style={{ borderColor: "rgba(168, 186, 160, 0.2)" }}>
-            <p className="text-xs text-center" style={{ color: "var(--funkia-sage)", opacity: 0.6 }}>
-              © 2026 Funkia AB. Alla rättigheter förbehållna. — Demo av Samify
-            </p>
+          <div>
+            <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, opacity: 0.9 }}>Stockholm</h4>
+            <p style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.8 }}>Ringvägen 100<br />118 60 Stockholm<br />08-669 39 06</p>
           </div>
+          <div>
+            <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, opacity: 0.9 }}>Linköping</h4>
+            <p style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.8 }}>Storgatan 20<br />582 23 Linköping<br />013-31 10 80</p>
+          </div>
+          <div>
+            <h4 style={{ fontSize: 13, fontWeight: 600, marginBottom: 12, opacity: 0.9 }}>Kontakt</h4>
+            <p style={{ fontSize: 13, opacity: 0.7, lineHeight: 1.8 }}>info@funkia.se<br />08-669 39 06</p>
+          </div>
+        </div>
+        <div style={{ maxWidth: 1100, margin: "32px auto 0", paddingTop: 24, borderTop: "1px solid rgba(245,241,232,0.15)", textAlign: "center", fontSize: 12, opacity: 0.5 }}>
+          © {new Date().getFullYear()} Funkia Landskapsarkitektur AB
         </div>
       </footer>
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   DEFAULT EXPORT
+   ═══════════════════════════════════════════════════════════════ */
+export default function FunkiaWidgetDemo() {
+  return (
+    <>
+      <FunkiaMockSite />
+      <FunkiaWidget />
+    </>
   );
 }
